@@ -87,7 +87,7 @@ final class AudioEngine {
 
     /// Level meter plus the feed for the spectrum visualizer.
     private func installMasterTap() {
-        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buf, _ in
+        limiter.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buf, _ in
             guard let self else { return }
             self.masterPeak = AudioEngine.peak(buf)
             self.sampleRing.write(buf)
@@ -107,11 +107,13 @@ final class AudioEngine {
         #if os(iOS)
         Self.configureAudioSession()
         #endif
-        engine.attach(limiter); engine.attach(bassEQ)
+        engine.attach(limiter); engine.attach(bassEQ); engine.attach(masterFXIn); engine.attach(masterFXOut)
         let shelf = bassEQ.bands[0]
         shelf.filterType = .lowShelf; shelf.frequency = 140; shelf.bandwidth = 1; shelf.gain = 0; shelf.bypass = false
         engine.connect(engine.mainMixerNode, to: bassEQ, format: nil)
-        engine.connect(bassEQ, to: limiter, format: nil)
+        engine.connect(bassEQ, to: masterFXIn, format: nil)
+        engine.connect(masterFXIn, to: masterFXOut, format: nil)
+        engine.connect(masterFXOut, to: limiter, format: nil)
         engine.connect(limiter, to: engine.outputNode, format: nil)
         engine.attach(auxMixer); engine.attach(click); engine.attach(previewSampler)
         click.volume = 0
@@ -216,9 +218,87 @@ final class AudioEngine {
         for p in 0..<128 { previewSampler.stopNote(UInt8(p), onChannel: 0) }
     }
 
+    // MARK: - Master effects
+
+    /// Effects on the whole mix. The mix goes mixer → master bass EQ → these effects → limiter → output, so the limiter
+    /// still catches anything an effect makes too loud.
+    // The chain sits between two mixers that never change, so effects can be swapped while the engine runs.
+    private let masterFXIn = AVAudioMixerNode(), masterFXOut = AVAudioMixerNode()
+    private(set) var masterEffects: [AVAudioUnit] = []
+    private(set) var masterUnits: [UUID: AVAudioUnit] = [:]
+    private var masterKeys: [UUID] = []
+    private var masterGeneration = 0
+    private(set) var masterLoading = false
+
+    /// Makes the master effect chain match `specs` (loading what is new, off the main thread, and splicing it in).
+    func syncMaster(_ specs: [PluginSpec]) {
+        let ids = specs.map { $0.id }
+        if ids == masterKeys {
+            for p in specs { masterUnits[p.id]?.auAudioUnit.shouldBypassEffect = p.bypassed }
+            return
+        }
+        masterKeys = ids
+        masterGeneration += 1
+        let gen = masterGeneration
+        masterLoading = true
+        Task { @MainActor in
+            var loaded: [AVAudioUnit] = []
+            var units: [UUID: AVAudioUnit] = [:]
+            for p in specs {
+                if let existing = self.masterUnits[p.id] { loaded.append(existing); units[p.id] = existing; continue }     // kept as it is
+                do {
+                    let u = try await PluginHost.instantiate(p)
+                    loaded.append(u); units[p.id] = u
+                } catch { self.onError?("Couldn't load \(p.name): \(error.localizedDescription)") }
+            }
+            guard gen == self.masterGeneration else {                  // a newer change arrived while this one was loading
+                for (id, u) in units where self.masterUnits[id] == nil && u.engine != nil { self.engine.detach(u) }
+                return
+            }
+            // Build the new chain, then drop what is no longer used. Connecting over an existing connection replaces it in one step,
+            // so the limiter at the end of the chain is never left without an input (which AVAudioEngine does not allow while it runs).
+            PluginWindows.shared.discard(self.masterUnits.keys.filter { units[$0] == nil })
+            for u in loaded where u.engine == nil { self.engine.attach(u) }
+            // One fixed format for the whole chain, so adding or removing an effect doesn't make the engine renegotiate
+            // formats upstream (which re-initialises the samplers and turns every instrument into a plain sine tone).
+            let format = self.masterFXIn.outputFormat(forBus: 0)
+            var prev: AVAudioNode = self.masterFXIn
+            for u in loaded { self.engine.connect(prev, to: u, format: format); prev = u }
+            self.engine.connect(prev, to: self.masterFXOut, format: format)
+            for e in self.masterEffects where !loaded.contains(where: { $0 === e }) { self.engine.detach(e) }
+            self.masterEffects = loaded
+            self.masterUnits = units
+            for p in specs { units[p.id]?.auAudioUnit.shouldBypassEffect = p.bypassed }
+            self.masterLoading = false
+            self.startEngine()
+            self.reloadSamplers()
+            self.onGraphChanged?()
+        }
+    }
+
+    /// Changing the shape of the audio graph makes AVAudioEngine re-initialise nodes, and an AUSampler forgets the sound it had loaded
+    /// (every instrument becomes a plain sine tone). The samplers are loaded again, one at a time on the loader queue.
+    func reloadSamplers() {
+        let pairs = strips.values.compactMap { st -> (SamplerUnit, InstrumentSpec)? in
+            guard let sam = st.instrument as? SamplerUnit, let sp = st.spec else { return nil }
+            return (sam, sp)
+        }
+        guard !pairs.isEmpty else { return }
+        samplersReloading += 1
+        Task { @MainActor in
+            for (sam, sp) in pairs { try? await Self.loadSampler(sam, spec: sp) }
+            self.samplersReloading -= 1
+        }
+    }
+    private(set) var samplersReloading = 0
+
+    func masterUnit(_ specID: UUID) -> AVAudioUnit? { masterUnits[specID] }
+    func setMasterBypass(specID: UUID, bypass: Bool) { masterUnits[specID]?.auAudioUnit.shouldBypassEffect = bypass }
+
     // MARK: - Strips
 
-    func syncTracks(_ tracks: [Track]) {
+    func syncTracks(_ tracks: [Track], master: [PluginSpec]? = nil) {
+        if let m = master { syncMaster(m) }
         let ids = Set(tracks.map { $0.id })
         for (id, strip) in strips where !ids.contains(id) {
             Task { @MainActor in PluginWindows.shared.discard(Array(strip.units.keys)) }
@@ -456,6 +536,7 @@ final class AudioEngine {
 
     /// Snapshot the live state of every plugin so it can be stored in the project.
     func captureState(of specID: UUID) -> Data? {
+        if let u = masterUnits[specID] { return PluginHost.captureState(u) }
         for s in strips.values {
             if let u = s.units[specID] { return PluginHost.captureState(u) }
         }
@@ -557,7 +638,7 @@ final class AudioEngine {
         #if os(macOS)
         return strips.values.contains { s in
             (s.instrument.map { !$0.auAudioUnit.isLoadedInProcess } ?? false) || s.effects.contains { !$0.auAudioUnit.isLoadedInProcess }
-        }
+        } || masterEffects.contains { !$0.auAudioUnit.isLoadedInProcess }
         #else
         return false                                        // iOS hosts no plugins in other processes
         #endif
@@ -608,7 +689,7 @@ final class AudioEngine {
         let wasPlaying = sequencer.isPlaying
         whileRenderPaused { sequencer.stop(); allNotesOff() }
         engine.stop()
-        engine.mainMixerNode.removeTap(onBus: 0)
+        limiter.removeTap(onBus: 0)
 
         let sr = 44100.0
         let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sr, channels: 2, interleaved: false)!
