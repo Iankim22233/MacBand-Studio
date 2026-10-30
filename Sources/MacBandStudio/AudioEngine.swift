@@ -259,18 +259,38 @@ final class AudioEngine {
             // so the limiter at the end of the chain is never left without an input (which AVAudioEngine does not allow while it runs).
             PluginWindows.shared.discard(self.masterUnits.keys.filter { units[$0] == nil })
             for u in loaded where u.engine == nil { self.engine.attach(u) }
+            // One fixed format for the whole chain, so adding or removing an effect doesn't make the engine renegotiate
+            // formats upstream (which re-initialises the samplers and turns every instrument into a plain sine tone).
+            let format = self.masterFXIn.outputFormat(forBus: 0)
             var prev: AVAudioNode = self.masterFXIn
-            for u in loaded { self.engine.connect(prev, to: u, format: nil); prev = u }
-            self.engine.connect(prev, to: self.masterFXOut, format: nil)
+            for u in loaded { self.engine.connect(prev, to: u, format: format); prev = u }
+            self.engine.connect(prev, to: self.masterFXOut, format: format)
             for e in self.masterEffects where !loaded.contains(where: { $0 === e }) { self.engine.detach(e) }
             self.masterEffects = loaded
             self.masterUnits = units
             for p in specs { units[p.id]?.auAudioUnit.shouldBypassEffect = p.bypassed }
             self.masterLoading = false
             self.startEngine()
+            self.reloadSamplers()
             self.onGraphChanged?()
         }
     }
+
+    /// Changing the shape of the audio graph makes AVAudioEngine re-initialise nodes, and an AUSampler forgets the sound it had loaded
+    /// (every instrument becomes a plain sine tone). The samplers are loaded again, one at a time on the loader queue.
+    func reloadSamplers() {
+        let pairs = strips.values.compactMap { st -> (SamplerUnit, InstrumentSpec)? in
+            guard let sam = st.instrument as? SamplerUnit, let sp = st.spec else { return nil }
+            return (sam, sp)
+        }
+        guard !pairs.isEmpty else { return }
+        samplersReloading += 1
+        Task { @MainActor in
+            for (sam, sp) in pairs { try? await Self.loadSampler(sam, spec: sp) }
+            self.samplersReloading -= 1
+        }
+    }
+    private(set) var samplersReloading = 0
 
     func masterUnit(_ specID: UUID) -> AVAudioUnit? { masterUnits[specID] }
     func setMasterBypass(specID: UUID, bypass: Bool) { masterUnits[specID]?.auAudioUnit.shouldBypassEffect = bypass }

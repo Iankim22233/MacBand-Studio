@@ -82,6 +82,53 @@ enum MasterTest {
         engine.syncMaster([])
         pump(10) { engine.masterEffects.isEmpty && !engine.masterLoading }
 
+        // live playback: the instruments must keep their own sound when effects come and go (a sampler that is re-initialised
+        // falls back to a plain sine tone). Offline renders reload the samplers, so this is checked on the live output.
+        var lastWide = 0, lastStrongest = 0.0
+        func liveSpread(_ label: String) -> Int {
+            let an = SpectrumAnalyzer()
+            engine.noteOn(trackID: piano.id, pitch: 60, velocity: 110)
+            var most = 0
+            for _ in 0..<25 { pump(0.03); an.update(from: engine.sampleRing, dt: 0.03); most = max(most, an.bands.filter { $0 > 0.25 }.count) }
+            engine.noteOff(trackID: piano.id, pitch: 60)
+            pump(1.5)
+            lastWide = an.bands.filter { $0 > 0.1 }.count; lastStrongest = Double(an.bands.max() ?? 0)
+            print("   \(label): \(most) frequency bands lit by one note; bands above 0.1: \(lastWide), strongest \(String(format: "%.2f", lastStrongest))")
+            return most
+        }
+        var piano = Track(name: "Piano", colorIndex: 1)
+        piano.instrument = InstrumentSpec(gmProgram: 0)
+        var p2 = Project(); p2.tracks = [piano]
+        engine.syncTracks(p2.tracks, master: [])
+        pump(30) { engine.strips[piano.id]?.instrument != nil && engine.strips[piano.id]?.loading == false }
+        pump(0.5)
+        let before = liveSpread("before any master effect")
+        let beforeWide = lastWide, beforeStrongest = lastStrongest
+        engine.syncMaster([delay()])
+        pump(30) { !engine.masterLoading && engine.masterEffects.count == 1 }
+        pump(10) { engine.samplersReloading == 0 }
+        pump(0.5)
+        let withFx = liveSpread("with a master effect")
+        engine.syncMaster([])
+        pump(10) { engine.masterEffects.isEmpty && !engine.masterLoading }
+        pump(10) { engine.samplersReloading == 0 }
+        pump(0.5)
+        let after = liveSpread("after removing it")
+        let afterWide = lastWide, afterStrongest = lastStrongest
+        check(before >= 4, "a piano note lights several frequency bands, not just one (\(before)): it is not a sine tone")
+        check(abs(afterStrongest - beforeStrongest) < 0.2 && afterWide >= beforeWide - 4, String(format: "after the effect is removed the piano still sounds like a piano, not a sine (strongest band %.2f then %.2f, wide bands %d then %d)", beforeStrongest, afterStrongest, beforeWide, afterWide))
+        _ = (withFx, after)
+
+        // adding another instrument (the graph changes shape again) must not turn the others into sine tones either
+        var bass = Track(name: "Strings", colorIndex: 2)
+        bass.instrument = InstrumentSpec(gmProgram: 48)
+        p2.tracks.append(bass)
+        engine.syncTracks(p2.tracks, master: [])
+        pump(30) { engine.strips[bass.id]?.instrument != nil && engine.strips[bass.id]?.loading == false }
+        pump(0.5)
+        _ = liveSpread("after adding another track")
+        check(abs(lastStrongest - beforeStrongest) < 0.2 && lastWide >= beforeWide - 4, String(format: "…and after adding another track (strongest band %.2f, wide bands %d)", lastStrongest, lastWide))
+
         // the project keeps them
         let s = Session()
         pump(1)
