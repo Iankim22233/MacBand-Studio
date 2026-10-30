@@ -77,6 +77,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--introshots"), i + 1 < Command
 }
 if CommandLine.arguments.contains("--bandtest") { exit(MainActor.assumeIsolated { GarageBandTest.run() }) }
 if CommandLine.arguments.contains("--wavebench") { MainActor.assumeIsolated { WaveBench.run() }; exit(0) }
+if CommandLine.arguments.contains("--mastertest") { exit(MainActor.assumeIsolated { MasterTest.run() }) }
 if CommandLine.arguments.contains("--headertest") { exit(MainActor.assumeIsolated { HeaderClickTest.run() }) }
 if CommandLine.arguments.contains("--projecttest") { exit(MainActor.assumeIsolated { ProjectTest.run() }) }
 if CommandLine.arguments.contains("--autosavetest") { exit(MainActor.assumeIsolated { AutosaveTest.run() }) }
