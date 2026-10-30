@@ -49,7 +49,7 @@ struct MixerView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 0) {
                         ForEach(session.project.tracks) { t in
-                            ChannelStrip(track: t, level: meters.levels[t.id] ?? 0, selected: t.id == session.selectedTrackID)
+                            ChannelStrip(track: t, level: meters.levels[t.id] ?? 0, selected: t.id == session.selectedTrackID && !session.masterSelected)
                         }
                     }
                 }
@@ -99,6 +99,9 @@ struct MasterStrip: View {
     var body: some View {
         VStack(spacing: 8) {
             Text("Master").font(.system(size: 11, weight: .semibold)).padding(.top, 8)
+            Button { session.selectMaster(); session.showInspector = true } label: {
+                Text(session.project.masterInserts.isEmpty ? "FX" : "FX · \(session.project.masterInserts.count)").font(Theme.vista(10)).frame(maxWidth: .infinity)
+            }.buttonStyle(VistaButtonStyle(state: session.masterSelected)).help("Effects on the whole mix (the Master track)")
             VStack(spacing: 2) {
                 VistaSlider(value: Binding(get: { session.project.masterBass }, set: { v in session.modify { $0.masterBass = (v * 2).rounded() / 2 } }), in: -12...6) { e in if e { session.pushUndo() } }
                     .frame(width: 64)
@@ -110,6 +113,7 @@ struct MasterStrip: View {
             Text(String(format: "%.0f%%", session.project.masterVolume / 0.8 * 100)).font(.system(size: 9)).foregroundStyle(Theme.faint).padding(.bottom, 8)
         }
         .frame(width: 92)
+        .background(session.masterSelected ? VistaFace(state: false, base: NSColor(white: 0.5, alpha: 1), border: 1).opacity(0.55) : nil)
     }
 }
 

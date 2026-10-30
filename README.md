@@ -102,6 +102,14 @@ too far. The master strip has a **Bass** control (a low shelf) for taste. Track 
 - **File ▸ Open…** (⌘O) shows a chooser with the projects in that folder, recent ones, and others Spotlight finds. **Open File…** (⌥⌘O) is the normal file dialog.
 - **GarageBand import:** on that first start every `.band` project in `~/Music/GarageBand` is converted into the MacBand folder, and a message tells you what happened. Each audio stem becomes an audio track, and the tempo, time signature and key come across. GarageBand keeps its notes and instruments in a private file nothing else can read, so those can't be imported. Your GarageBand projects are never changed. Later, use **File ▸ Import ▸ Band Project…** or drop a `.band` onto the window.
 
+## Master track (effects on the whole mix)
+
+Click **Master** under the track list (or **FX** on the Master strip in the Mixer) to open the Master panel in the Inspector. **Add Effect to
+Master** puts an Audio Unit or VST3 effect on everything you hear, so one reverb, compressor or EQ covers the whole song instead of one
+instrument. Effects run in the order shown (top to bottom), then through the limiter that protects your speakers; each can be bypassed
+(power button), opened (sliders button) or removed (×). They are saved with the project, undo/redo works, and exports include them.
+The Master panel also has the master volume and bass. The level meter and the Visualizer now listen after the master effects.
+
 ## Auto Save
 
 Changes are saved to the project's file about ten seconds after you make them, when you switch to another app, and when you
@@ -122,7 +130,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
 `--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).

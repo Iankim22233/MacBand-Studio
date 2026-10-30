@@ -16,7 +16,7 @@ extension Session {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             self.project = DemoSong.make()
-            self.engine.syncTracks(self.project.tracks)
+            self.engine.syncTracks(self.project.tracks, master: self.project.masterInserts)
             self.applyMix()
             let ti = Int(value("--demo-track") ?? "0") ?? 0
             self.selectedTrackID = self.project.tracks[ti].id
@@ -64,6 +64,10 @@ extension Session {
                 UserDefaults.standard.removeObject(forKey: "visualMode")      // a picture run must not change the saved choice
             }
         case "browser": showProjectBrowser = true
+        case "master":                                      // the Master track selected, with two example effects
+            bottomPanel = .mixer
+            project.masterInserts = [MasterTest.delay(), PluginSpec(format: .au, name: "AUMultibandCompressor", vendor: "Apple", isInstrument: false)]
+            selectMaster()
         case "intro":
             introStartPage = Int(CommandLine.arguments.firstIndex(of: "--demo-intro-page").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil } ?? "0") ?? 0
             showIntro = true
