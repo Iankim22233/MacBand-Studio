@@ -258,8 +258,20 @@ final class AudioEngine {
         return s
     }
 
+    /// The sequencer keeps a destination (an internal record pointing into the track's events) for every audio unit a track plays
+    /// into. If the unit leaves the engine, or the track's events are replaced by a reload, while that record still exists, the
+    /// next seek reads freed memory and the app crashes inside AudioToolbox. So the sequencer is told to let go first.
+    private func releaseSequencerDestinations(of nodes: [AVAudioNode?] = []) {
+        guard let seq = sequencer else { return }
+        for t in seq.tracks {
+            if nodes.isEmpty { t.destinationAudioUnit = nil }
+            else if let d = t.destinationAudioUnit, nodes.contains(where: { $0 === d }) { t.destinationAudioUnit = nil }
+        }
+    }
+
     private func remove(_ s: TrackStrip) {
         s.mixer.removeTap(onBus: 0)
+        releaseSequencerDestinations(of: [s.instrument] + s.effects)
         if let i = s.instrument { engine.disconnectNodeOutput(i); engine.detach(i) }
         for e in s.effects { engine.disconnectNodeOutput(e); engine.detach(e) }
         engine.disconnectNodeOutput(s.mixer)
@@ -316,6 +328,7 @@ final class AudioEngine {
             }
             // Tear down the old chain (and any editor windows that belonged to it)
             PluginWindows.shared.discard(Array(s.units.keys))
+            self.releaseSequencerDestinations(of: [s.instrument] + s.effects)
             if let i = s.instrument { self.engine.disconnectNodeOutput(i); self.engine.detach(i) }
             for e in s.effects { self.engine.disconnectNodeOutput(e); self.engine.detach(e) }
             self.engine.disconnectNodeInput(s.mixer)
@@ -525,6 +538,7 @@ final class AudioEngine {
         sequencer.stop()
         stopAudio()
         allNotesOff()
+        releaseSequencerDestinations()                      // before the old events are replaced (see above)
         loopSource = project
         let data = MIDIFile.build(project.loopUnrolled(), forExport: false, metronome: metronome)
         // The sequencer keeps the tempo events of whatever it loaded before and adds the new ones to them, so a tempo change
