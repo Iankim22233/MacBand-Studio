@@ -338,20 +338,9 @@ final class AudioEngine {
         return s
     }
 
-    /// The sequencer keeps a destination (an internal record pointing into the track's events) for every audio unit a track plays
-    /// into. If the unit leaves the engine, or the track's events are replaced by a reload, while that record still exists, the
-    /// next seek reads freed memory and the app crashes inside AudioToolbox. So the sequencer is told to let go first.
-    private func releaseSequencerDestinations(of nodes: [AVAudioNode?] = []) {
-        guard let seq = sequencer else { return }
-        for t in seq.tracks {
-            if nodes.isEmpty { t.destinationAudioUnit = nil }
-            else if let d = t.destinationAudioUnit, nodes.contains(where: { $0 === d }) { t.destinationAudioUnit = nil }
-        }
-    }
-
     private func remove(_ s: TrackStrip) {
         s.mixer.removeTap(onBus: 0)
-        releaseSequencerDestinations(of: [s.instrument] + s.effects)
+        Self.samplerQueue.sync { }                       // a load of this instrument that is already running finishes first
         if let i = s.instrument { engine.disconnectNodeOutput(i); engine.detach(i) }
         for e in s.effects { engine.disconnectNodeOutput(e); engine.detach(e) }
         engine.disconnectNodeOutput(s.mixer)
@@ -408,7 +397,7 @@ final class AudioEngine {
             }
             // Tear down the old chain (and any editor windows that belonged to it)
             PluginWindows.shared.discard(Array(s.units.keys))
-            self.releaseSequencerDestinations(of: [s.instrument] + s.effects)
+            Self.samplerQueue.sync { }
             if let i = s.instrument { self.engine.disconnectNodeOutput(i); self.engine.detach(i) }
             for e in s.effects { self.engine.disconnectNodeOutput(e); self.engine.detach(e) }
             self.engine.disconnectNodeInput(s.mixer)
@@ -511,6 +500,9 @@ final class AudioEngine {
 
     /// Loads whatever `spec` names into `s`: a GarageBand/Logic `.exs`, a SoundFont preset, or a built-in GM sound / drum kit.
     static func loadSamplerSync(_ s: SamplerUnit, spec: InstrumentSpec) throws {
+        // AVAudioUnitSampler aborts the app if it is asked to load while it is not attached to an engine (it was removed while this
+        // load waited in the queue), so that case is an error instead.
+        guard s.engine != nil else { throw EngineError.message("The instrument was removed before it finished loading.") }
         if let src = spec.sampler {
             let url = URL(fileURLWithPath: src.path)
             switch src.kind {
@@ -619,13 +611,14 @@ final class AudioEngine {
         sequencer.stop()
         stopAudio()
         allNotesOff()
-        releaseSequencerDestinations()                      // before the old events are replaced (see above)
+        // A new sequencer every time. Apple's sequencer keeps an internal record for every audio unit a track plays into; when
+        // units are removed or tracks replaced (a project load does both while instruments are still loading) those records
+        // outlive what they point to, and the next seek read freed memory and crashed inside AudioToolbox. A fresh sequencer has
+        // none of that, and it also starts with an empty tempo track, so tempo changes that were deleted can't linger.
+        sequencer = nil                                  // the old one goes first: it unhooks itself from the engine when it is released
+        sequencer = AVAudioSequencer(audioEngine: engine)
         loopSource = project
         let data = MIDIFile.build(project.loopUnrolled(), forExport: false, metronome: metronome)
-        // The sequencer keeps the tempo events of whatever it loaded before and adds the new ones to them, so a tempo change
-        // that was moved or deleted would still sound. Start from an empty tempo track every time.
-        let tempoLength = sequencer.tempoTrack.lengthInBeats
-        if tempoLength > 0 { sequencer.tempoTrack.clearEvents(in: AVBeatRange(start: 0, length: tempoLength + 1)) }
         do { try sequencer.load(from: data, options: []) } catch {
             onError?("Sequencer load failed: \(error.localizedDescription)"); return
         }
@@ -702,6 +695,11 @@ final class AudioEngine {
         defer { offlineBusy = false }
         let wasPlaying = sequencer.isPlaying
         whileRenderPaused { sequencer.stop(); allNotesOff() }
+        var p = project
+        if !honorLoop { p.loopEnabled = false }
+        // The song for the render goes into a fresh sequencer now, before the engine is switched to offline rendering
+        // (a sequencer created while the engine is in offline mode never plays).
+        reloadSequence(p, metronome: false)
         engine.stop()
         limiter.removeTap(onBus: 0)
 
@@ -723,10 +721,7 @@ final class AudioEngine {
             installMasterTap()
             startEngine()
         }
-        var p = project
-        if !honorLoop { p.loopEnabled = false }
         try engine.start()
-        reloadSequence(p, metronome: false)
         sequencer.currentPositionInBeats = (honorLoop ? p.loopStart : 0) + MIDIFile.playbackLead - 0.06
         sequencer.prepareToPlay()
         try sequencer.start()
