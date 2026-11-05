@@ -45,7 +45,7 @@ final class Session: ObservableObject {
     @Published var isDirty = false
 
     // Selection / UI state
-    @Published var selectedTrackID: UUID?
+    @Published var selectedTrackID: UUID? { didSet { masterSelected = false } }      // picking a track leaves the Master track
     @Published var selectedClipID: UUID?
     @Published var selectedNoteIDs: Set<UUID> = []
     @Published var selectedAudioClipID: UUID?
@@ -62,6 +62,7 @@ final class Session: ObservableObject {
     @Published var showPluginManager = false
     @Published var showProjectBrowser = false
     @Published var showIntro = false
+    @Published var masterSelected = false               // the Master track is the one shown in the Inspector
     var introStartPage = 0
     var bandImportRunning = false
     var pendingNotice: (title: String, text: String)?
@@ -151,7 +152,7 @@ final class Session: ObservableObject {
         selectedClipID = t.clips.first?.id
         engine.onError = { [weak self] m in Task { @MainActor in self?.errorMessage = m } }
         engine.onGraphChanged = { [weak self] in Task { @MainActor in self?.graphChanged() } }
-        engine.syncTracks(project.tracks)
+        engine.syncTracks(project.tracks, master: project.masterInserts)
         applyMix()
         levels.attach(engine)
         library.rescan()
@@ -219,7 +220,7 @@ final class Session: ObservableObject {
     func modify(_ body: (inout Project) -> Void) {
         body(&project)
         isDirty = true
-        engine.syncTracks(project.tracks)
+        engine.syncTracks(project.tracks, master: project.masterInserts)
         applyMix()
         sequenceDidChange()
     }
@@ -243,7 +244,7 @@ final class Session: ObservableObject {
         if !project.tracks.contains(where: { $0.id == selectedTrackID }) { selectedTrackID = project.tracks.first?.id }
         if selectedClipLocation == nil { selectedClipID = nil }
         selectedNoteIDs = selectedNoteIDs.filter { id in project.tracks.contains { $0.clips.contains { $0.notes.contains { $0.id == id } } } }
-        engine.syncTracks(project.tracks)
+        engine.syncTracks(project.tracks, master: project.masterInserts)
         applyMix()
         sequenceDidChange()
         // tuned audio must follow the restored notes
@@ -321,6 +322,29 @@ final class Session: ObservableObject {
             $0.tracks[i].bendRange = inst.plugin == nil ? 12 : 2
             if $0.tracks[i].name == oldDefault || $0.tracks[i].name.hasPrefix("Track ") { $0.tracks[i].name = inst.displayName }
         }
+    }
+
+    // MARK: Master track (effects on the whole mix)
+
+    func selectMaster() { masterSelected = true }
+
+    func addMasterInsert(_ spec: PluginSpec) {
+        var s = spec; s.id = UUID()
+        edit { $0.masterInserts.append(s) }
+    }
+    func removeMasterInsert(specID: UUID) {
+        edit { $0.masterInserts.removeAll { $0.id == specID } }
+    }
+    func toggleMasterBypass(specID: UUID) {
+        guard let i = project.masterInserts.firstIndex(where: { $0.id == specID }) else { return }
+        pushUndo()
+        project.masterInserts[i].bypassed.toggle()
+        engine.setMasterBypass(specID: specID, bypass: project.masterInserts[i].bypassed)
+        isDirty = true
+    }
+    func openMasterEditor(spec: PluginSpec) {
+        guard let u = engine.masterUnit(spec.id) else { errorMessage = "\(spec.name) is still loading."; return }
+        PluginWindows.shared.open(unit: u, title: "Master: \(spec.name)", key: spec.id)
     }
 
     func addInsert(trackID: UUID, _ spec: PluginSpec) {
@@ -564,6 +588,9 @@ final class Session: ObservableObject {
 
 
     func captureStates() {
+        for si in project.masterInserts.indices {
+            if let d = engine.captureState(of: project.masterInserts[si].id) { project.masterInserts[si].state = d }
+        }
         for ti in project.tracks.indices {
             if var p = project.tracks[ti].instrument.plugin, let d = engine.captureState(of: p.id) {
                 p.state = d; project.tracks[ti].instrument.plugin = p
@@ -601,7 +628,7 @@ final class Session: ObservableObject {
         selectedClipID = p.tracks.first?.clips.first?.id
         selectedNoteIDs = []
         transport.beat = 0; engine.position = 0
-        engine.syncTracks(p.tracks)
+        engine.syncTracks(p.tracks, master: p.masterInserts)
         applyMix()
         sequenceDirty = true; flushSequence()
         restoreAudioAssets(for: p.tracks, near: url)

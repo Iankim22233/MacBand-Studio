@@ -73,7 +73,7 @@ struct TrackHeaderColumn: View {
             ClippedScrollHost(scrollY: state.scrollY, contentHeight: CGFloat(session.project.tracks.count) * state.rowH + 200) {
                 VStack(spacing: 0) {
                     ForEach(session.project.tracks) { t in
-                        TrackHeaderRow(track: t, selected: t.id == session.selectedTrackID, levels: session.levels, height: state.rowH)
+                        TrackHeaderRow(track: t, selected: t.id == session.selectedTrackID && !session.masterSelected, levels: session.levels, height: state.rowH)
                     }
                     Color.clear.frame(height: 200)
                 }
@@ -81,12 +81,39 @@ struct TrackHeaderColumn: View {
                 .buttonStyle(VistaButtonStyle())
                 .preferredColorScheme(.dark)
             }
+            MasterHeaderRow()
         }
         .background(Theme.panel)
     }
 }
 
 #if os(macOS)
+/// The Master track, pinned under the track list: select it to put effects on the whole mix.
+struct MasterHeaderRow: View {
+    @EnvironmentObject var session: Session
+    @ObservedObject private var theme = ButtonTheme.shared
+    var body: some View {
+        let selected = session.masterSelected
+        let count = session.project.masterInserts.count
+        HStack(spacing: 0) {
+            Rectangle().fill(Color.white.opacity(selected ? 0.9 : 0.45)).frame(width: 8)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Master").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                Text(count == 0 ? "All tracks · no effects" : "All tracks · \(count) effect\(count == 1 ? "" : "s")").font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+            }
+            .padding(.leading, 10)
+            Spacer(minLength: 4)
+            Image(systemName: "slider.horizontal.3").font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).padding(.trailing, 12)
+        }
+        .frame(height: 48)
+        .background(VistaFace(state: selected, base: NSColor(white: 0.5, alpha: 1), border: selected ? 1 : 0.75).opacity(selected ? 0.95 : 0.6))
+        .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture { session.selectMaster(); session.showInspector = true }
+        .help("The Master track: effects here work on the whole mix")
+    }
+}
+
 /// Shows SwiftUI content taller than its frame, scrolled by `scrollY`. Everything outside the frame is neither drawn nor clickable.
 struct ClippedScrollHost<Content: View>: NSViewRepresentable {
     let scrollY: CGFloat

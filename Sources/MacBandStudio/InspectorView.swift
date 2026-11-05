@@ -84,7 +84,9 @@ struct InspectorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if let t = session.selectedTrack {
+                if session.masterSelected {
+                    MasterInspector()
+                } else if let t = session.selectedTrack {
                     TrackInspector(track: t)
                         .environment(\.vistaTint, Palette.nsColor(t.colorIndex))      // the buttons on an instrument take its colour
                     if let loc = session.selectedClipLocation {
@@ -99,6 +101,55 @@ struct InspectorView: View {
             .padding(14)
         }
         .background(Theme.panel)
+    }
+}
+
+/// The Master track: effects on the whole mix, plus the master volume and bass.
+struct MasterInspector: View {
+    @EnvironmentObject var session: Session
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(text: "Master")
+            Text("Everything you hear passes through here, so an effect added here (a reverb, a compressor, an EQ) works on the whole song instead of one instrument.")
+                .font(.system(size: 11)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
+
+            SectionLabel(text: "Effects")
+            VStack(spacing: 4) {
+                ForEach(session.project.masterInserts) { fx in
+                    HStack(spacing: 6) {
+                        IconButton(symbol: "power", active: !fx.bypassed, help: fx.bypassed ? "Enable" : "Bypass", size: 20, fontSize: 9) { session.toggleMasterBypass(specID: fx.id) }
+                        Text(fx.name).font(.system(size: 12)).lineLimit(1).foregroundStyle(fx.bypassed ? Theme.faint : Theme.text)
+                        Spacer()
+                        IconButton(symbol: "slider.horizontal.3", help: "Open plugin window", size: 20, fontSize: 9) { session.openMasterEditor(spec: fx) }
+                        IconButton(symbol: "xmark", help: "Remove", size: 20, fontSize: 9) { session.removeMasterInsert(specID: fx.id) }
+                    }
+                    .padding(.horizontal, 8).frame(height: 28)
+                    .background(Rectangle().fill(Theme.raised))
+                }
+                Menu {
+                    EffectMenuItems { spec in session.addMasterInsert(spec) }
+                    Divider()
+                    Button("Plugin Manager…") { session.showPluginManager = true }
+                } label: {
+                    HStack { Image(systemName: "plus"); Text("Add Effect to Master") }
+                        .font(Theme.vista(11)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(height: 26)
+                        .vistaBackground()
+                }.menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+                if session.project.masterInserts.isEmpty {
+                    Text("No effects yet. They run in the order shown, then the limiter that protects your speakers.").font(.system(size: 10)).foregroundStyle(Theme.faint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            SectionLabel(text: "Mix")
+            LabeledSlider(label: "Volume", value: Binding(get: { session.project.masterVolume }, set: { v in session.modify { $0.masterVolume = v } }), range: 0...1,
+                          display: String(format: "%.0f%%", session.project.masterVolume / 0.8 * 100), onBegin: { session.pushUndo() })
+            LabeledSlider(label: "Bass", value: Binding(get: { session.project.masterBass }, set: { v in session.modify { $0.masterBass = (v * 2).rounded() / 2 } }), range: -12...6,
+                          display: String(format: "%+.1f dB", session.project.masterBass), onBegin: { session.pushUndo() })
+                .help("Less or more bass on the whole mix: a low shelf below about 140 Hz")
+        }
     }
 }
 
