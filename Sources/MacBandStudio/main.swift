@@ -76,8 +76,8 @@ if let i = CommandLine.arguments.firstIndex(of: "--introshots"), i + 1 < Command
     exit(0)
 }
 if CommandLine.arguments.contains("--bandtest") { exit(MainActor.assumeIsolated { GarageBandTest.run() }) }
-if CommandLine.arguments.contains("--wavebench") { MainActor.assumeIsolated { WaveBench.run() }; exit(0) }
 if CommandLine.arguments.contains("--mastertest") { exit(MainActor.assumeIsolated { MasterTest.run() }) }
+if CommandLine.arguments.contains("--wavebench") { MainActor.assumeIsolated { WaveBench.run() }; exit(0) }
 if let i = CommandLine.arguments.firstIndex(of: "--graphfuzz") {
     let rest = CommandLine.arguments.dropFirst(i + 1).filter { !$0.hasPrefix("--") }
     let rounds = rest.compactMap { Int($0) }.first ?? 200
