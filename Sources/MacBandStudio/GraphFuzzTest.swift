@@ -27,11 +27,10 @@ enum GraphFuzzTest {
         s.isDirty = false
         s.openProject(url: URL(fileURLWithPath: paths[paths.count - 1]))          // (the last one: a small project with a clear sound)
         pump(6)
-        if CommandLine.arguments.contains("--strip-master") { s.edit { $0.masterInserts = [] }; pump(4) }
         s.play(); pump(4)
         var loudest: Float = 0
         for _ in 0..<40 { pump(0.05); var buf = [Float](); s.engine.sampleRing.latest(4096, into: &buf); loudest = max(loudest, buf.map { abs($0) }.max() ?? 0) }
-        print("   playing \(s.engine.isPlaying), tracks \(s.project.tracks.count), master effects \(s.project.masterInserts.count), masterPeak \(s.engine.masterPeak), strips loaded \(s.engine.strips.values.filter { $0.instrument != nil }.count), position \(String(format: "%.1f", s.engine.position))")
+        print("   playing \(s.engine.isPlaying), tracks \(s.project.tracks.count), masterPeak \(s.engine.masterPeak), strips loaded \(s.engine.strips.values.filter { $0.instrument != nil }.count), position \(String(format: "%.1f", s.engine.position))")
         s.stop()
         print(loudest > 0.01 ? "AUDIBLE AFTER THE CYCLES (peak \(String(format: "%.2f", loudest)))" : "SILENT AFTER THE CYCLES")
         print("LOAD CYCLES SURVIVED \(rounds) ROUNDS")
