@@ -23,6 +23,7 @@ extension Session {
             self.selectedClipID = self.project.tracks[ti].clips.first?.id
             if args.contains("--demo-mute-solo") { self.project.tracks[1].mute = true; self.project.tracks[2].solo = true }      // for pictures of the M and S buttons
             self.demoPanel(value("--demo-panel"))
+            if args.contains("--demo-jam") { JamWindow.shared.show(self) }       // the 3D stage in its own window
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             if args.contains("--demo-play") {                      // capture while the music plays (track glow)
                 self.togglePlay()
@@ -43,6 +44,7 @@ extension Session {
                     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
                 }
                 let main = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })
+                if args.contains("--demo-jam") { grab(JamWindow.shared.window, to: out); exit(0) }
                 grab(main, to: out)
                 grab(main?.attachedSheet, to: out.replacingOccurrences(of: ".png", with: "-sheet.png"))
                 exit(0)

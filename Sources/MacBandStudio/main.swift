@@ -80,6 +80,11 @@ if CommandLine.arguments.contains("--wavebench") { MainActor.assumeIsolated { Wa
 if CommandLine.arguments.contains("--headertest") { exit(MainActor.assumeIsolated { HeaderClickTest.run() }) }
 if CommandLine.arguments.contains("--projecttest") { exit(MainActor.assumeIsolated { ProjectTest.run() }) }
 if CommandLine.arguments.contains("--autosavetest") { exit(MainActor.assumeIsolated { AutosaveTest.run() }) }
+if CommandLine.arguments.contains("--jamtest") { exit(MainActor.assumeIsolated { JamTest.run() }) }
+if let i = CommandLine.arguments.firstIndex(of: "--jamshots"), i + 1 < CommandLine.arguments.count {
+    MainActor.assumeIsolated { JamTest.shots(CommandLine.arguments[i + 1]) }
+    exit(0)
+}
 if CommandLine.arguments.contains("--visualtest") { exit(MainActor.assumeIsolated { VisualizerTest.run() }) }
 if CommandLine.arguments.contains("--soundtest-after") { exit(MainActor.assumeIsolated { SoundTest.afterOffline() }) }
 if CommandLine.arguments.contains("--balancetest") { exit(MainActor.assumeIsolated { BalanceTest.run() }) }

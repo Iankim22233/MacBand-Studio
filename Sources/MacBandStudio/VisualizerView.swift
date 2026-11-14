@@ -261,6 +261,8 @@ struct VisualizerContainer: View {
             } else {
                 Button { VisualizerWindow.shared.show(session) } label: { Label("Pop Out", systemImage: "rectangle.on.rectangle") }
                     .help("Open the visualizer in its own window (⌥⌘V), which can go full screen")
+                Button { JamWindow.shared.show(session) } label: { Label("3D Stage", systemImage: "cube.transparent") }
+                    .help("A 3D band: an instrument for every track that plays along, with a spotlight when two of them play (⌥⌘J)")
             }
             #endif
         }
