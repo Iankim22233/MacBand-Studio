@@ -62,6 +62,7 @@ class JamInstrument {
     let kind: JamKind
     let tint: NSColor
     var size: (w: Double, h: Double) = (4, 3)
+    var maxScale = 1.5                 // how much bigger than its natural size the stage may make it
     init(kind: JamKind, tint: NSColor) { self.kind = kind; self.tint = tint }
     func update(_ f: JamFrame) {}
 }
@@ -333,6 +334,8 @@ final class JamStringed: JamInstrument {
     private var pluck: [Double] = []
     private let nutY: Double, bridgeY: Double, scaleLen: Double
     private var bow: SCNNode?
+    /// Violins and violas are held out to the side, cellos and basses stand upright.
+    let sideways: Bool
     private var bowAmount = 0.0
 
     static func tuning(_ kind: JamKind, program: Int) -> (opens: [Int], neck: Double) {
@@ -356,6 +359,7 @@ final class JamStringed: JamInstrument {
         bridgeY = -0.5
         nutY = 0.9 + t.neck
         scaleLen = nutY + 0.5
+        sideways = kind == .strings && program != 42 && program != 43
         super.init(kind: kind, tint: tint)
         let rig = SCNNode()
         node.addChildNode(rig)
@@ -393,19 +397,34 @@ final class JamStringed: JamInstrument {
         }
         if kind == .strings {
             let b = SCNNode()
-            b.addChildNode(JamStyle.cyl(0.018, 2.6, JamStyle.material(JamStyle.wood), 0, 0, 0))
-            b.addChildNode(JamStyle.box(2.4, 0.05, 0.01, JamStyle.material(NSColor(white: 0.95, alpha: 1)), 0, -0.03, 0))
+            b.addChildNode(JamStyle.cyl(0.03, 2.6, JamStyle.material(JamStyle.wood), 0, 0, 0.07))                                   // the stick…
+            b.addChildNode(JamStyle.box(0.09, 2.4, 0.02, JamStyle.material(NSColor(white: 0.95, alpha: 1)), 0, 0, 0, chamfer: 0))    // …and the hair, along it
             b.eulerAngles.z = .pi / 2
             b.position = V(2.0, bridgeY + 0.55, 0.3)
             rig.addChildNode(b)
             bow = b
         }
-        let lift = 1.4 * s
-        rig.position = V(0, lift, 0)
-        node.addChildNode(JamStyle.cyl(0.05, lift, JamStyle.material(JamStyle.steel, shine: 0.8), 0, lift / 2, -0.25))      // a stand
-        node.addChildNode(JamStyle.cyl(0.55, 0.05, JamStyle.material(JamStyle.ink), 0, 0.03, -0.25))
-        size = (max(1.9 * s, neckW + 0.5) + (kind == .strings ? 1.6 : 0), lift + nutY + 0.65)
+        let stand = JamStyle.material(JamStyle.steel, shine: 0.8)
+        if sideways {
+            // held the way a violinist does: the neck points off to the left and a little up, the body is at the chin
+            let lift = 2.0
+            rig.eulerAngles.z = CGFloat(Double.pi / 2 - 0.35)
+            rig.position = V((nutY - 0.55) / 2, lift, 0)
+            node.addChildNode(JamStyle.cyl(0.04, lift - 0.8, stand, (nutY - 0.55) / 2, (lift - 0.8) / 2, -0.25))
+            node.addChildNode(JamStyle.cyl(0.5, 0.05, JamStyle.material(JamStyle.ink), (nutY - 0.55) / 2, 0.03, -0.25))
+            size = (nutY + 1.6, lift + 1.5)
+            maxScale = 0.62                                    // a violin is small
+        } else {
+            let lift = 1.4 * s
+            rig.position = V(0, lift, 0)
+            node.addChildNode(JamStyle.cyl(0.05, lift, stand, 0, lift / 2, -0.25))      // a stand
+            node.addChildNode(JamStyle.cyl(0.55, 0.05, JamStyle.material(JamStyle.ink), 0, 0.03, -0.25))
+            size = (max(1.9 * s, neckW + 0.5) + (kind == .strings ? 1.6 : 0), lift + nutY + 0.65)
+        }
     }
+
+    /// Where the bow is along the strings (nil for instruments without one).
+    var bowPosition: Double? { bow.map { Double($0.position.x) } }
 
     /// Where the fingers go: each sounding note on its own string, as low a fret as it allows.
     func fingering(_ notes: [VNote]) -> [Int: (fret: Int, vel: Int, start: Double)] {
@@ -657,6 +676,11 @@ final class JamStage {
     private var spotState = JamSpot()
     private var drumFlags: [Bool] = []
     private(set) var spotTargets: [Int] = []          // the tracks in the spotlight right now
+    private(set) var spotCandidate: [Int] = []        // who would be lit, once they have played alone for a measure
+    private(set) var stableBeats = 0.0                // how long the candidates have been the same
+    private var beatsPerBar = 4.0
+    private var audible: [Bool] = []                  // false for muted tracks, and for all but the soloed ones
+    static let spotWaitBars = 1.0
     private(set) var dim = 0.0                        // 0 = house lights, 1 = only the spotlights
     private var time = 0.0
     private var signature = 0
@@ -732,7 +756,9 @@ final class JamStage {
 
     private func rebuild(_ project: Project) {
         for c in world.childNodes { c.removeFromParentNode() }
-        slots = []; spotState.reset(); spotTargets = []; time = 0
+        slots = []; spotState.reset(); spotTargets = []; spotCandidate = []; stableBeats = 0; time = 0
+        beatsPerBar = project.beatsPerBar
+        setMix(project)
         timeline = JamTimeline(project)
         drumFlags = project.tracks.map { JamKind.of($0) == .drums && $0.kind == .instrument }
         var melodic: [Int] = [], drums: [Int] = []
@@ -762,7 +788,7 @@ final class JamStage {
             let t = project.tracks[sp.track]
             let inst = Self.instrument(for: t, range: timeline.pitchRange(sp.track))
             let tint = Palette.nsColor(t.colorIndex)
-            let fit = min(1.5, 4.4 / inst.size.w, 4.3 / inst.size.h)
+            let fit = min(inst.maxScale, 4.4 / inst.size.w, 4.3 / inst.size.h)
             inst.node.scale = V(fit, fit, fit)
             inst.node.position = V(sp.x, 0, sp.z)
             inst.node.eulerAngles.y = CGFloat(-sp.x * 0.035)
@@ -772,7 +798,7 @@ final class JamStage {
             world.addChildNode(pad)
             world.addChildNode(Self.label(t.name, tint: tint, at: V(sp.x, 0.28, sp.z + 2.7)))
             var spot: SCNNode?, beam: SCNMaterial?
-            if inst.kind != .drums {
+            do {
                 let target = V(sp.x, 1.5, sp.z)
                 let from = V(sp.x, 11, sp.z + 5)
                 let l = SCNLight(); l.type = .spot; l.color = NSColor(red: 1, green: 0.95, blue: 0.82, alpha: 1)
@@ -840,26 +866,35 @@ final class JamStage {
         cameraNode.look(at: target)
     }
 
+    /// Muted tracks (and every track but the soloed ones) are silent, so their instruments stand still and don't count as playing.
+    func setMix(_ project: Project) {
+        let solo = project.tracks.contains { $0.solo }
+        audible = project.tracks.map { !$0.mute && (!solo || $0.solo) }
+    }
+
     /// Moves the stage on: instruments animate to what is sounding at `beat`, and the spotlights decide who is lit.
     func update(beat: Double, playing: Bool, secondsPerBeat spb: Double, dt: Double) {
         time += dt
         let recentBeats = 1.0 / spb
         var sounding: [Int] = []
         for s in slots {
-            let snd = playing ? timeline.sounding(s.track, at: beat) : []
-            let recent = playing ? timeline.started(s.track, from: beat - recentBeats, to: beat) : []
+            let on = playing && (audible.indices.contains(s.track) ? audible[s.track] : true)
+            let snd = on ? timeline.sounding(s.track, at: beat) : []
+            let recent = on ? timeline.started(s.track, from: beat - recentBeats, to: beat) : []
             var upcoming: [VNote] = []
             if s.inst.kind == .piano {                       // the falling notes are the notes about to be played
                 upcoming = timeline.started(s.track, from: playing ? beat + 1e-6 : beat, to: beat + 2.6 / spb) + snd
             }
             s.inst.update(JamFrame(beat: beat, spb: spb, time: time, dt: dt, playing: playing, sounding: snd, recent: recent, upcoming: upcoming))
-            if !snd.isEmpty || (s.inst.kind == .drums && !recent.isEmpty) { sounding.append(s.track) }
+            if !snd.isEmpty || (s.inst.kind == .drums && recent.contains { (beat - $0.start) * spb <= 0.4 }) { sounding.append(s.track) }
             let active = (!snd.isEmpty || !recent.isEmpty) ? 1.0 : 0.0
             s.glow += (active - s.glow) * min(1, dt * (active > s.glow ? 20 : 4))
             s.pad.emission.contents = JamStyle.lit(s.inst.tint, s.glow * 0.2)
         }
         spotState.update(sounding: sounding, now: time)
-        spotTargets = JamSpot.targets(spotState.playing(now: time), drums: drumFlags)
+        let want = JamSpot.targets(spotState.playing(now: time), drums: drumFlags)
+        if want != spotCandidate { spotCandidate = want; stableBeats = 0 } else if !want.isEmpty { stableBeats += dt / spb }
+        spotTargets = stableBeats >= Self.spotWaitBars * beatsPerBar ? spotCandidate : []      // wait a measure before the light comes on
         for s in slots {
             guard let sp = s.spot, let beam = s.beam else { continue }
             let want = spotTargets.contains(s.track) ? 1.0 : 0.0

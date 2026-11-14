@@ -58,32 +58,58 @@ enum JamTest {
         let drums = [false, false, true, false]
         check(JamSpot.targets([0, 1], drums: drums) == [0, 1], "two instruments: a spotlight on both")
         check(JamSpot.targets([0, 1, 2], drums: drums) == [0, 1], "…drums don't count")
-        check(JamSpot.targets([0, 2], drums: drums).isEmpty, "one instrument and drums: no spotlight")
-        check(JamSpot.targets([0, 1, 3], drums: drums).isEmpty && JamSpot.targets([], drums: drums).isEmpty && JamSpot.targets([2], drums: drums).isEmpty, "three, or none: no spotlight")
+        check(JamSpot.targets([0], drums: drums) == [0] && JamSpot.targets([0, 2], drums: drums) == [0], "a solo (with or without drums behind it): spotlight on the soloist")
+        check(JamSpot.targets([2], drums: drums) == [2], "drums on their own: a drum solo")
+        check(JamSpot.targets([0, 1, 3], drums: drums).isEmpty && JamSpot.targets([], drums: drums).isEmpty, "three instruments, or none: no spotlight")
         var hold = JamSpot()
         hold.update(sounding: [0], now: 1.0)
         check(hold.playing(now: 1.2) == [0] && hold.playing(now: 1.5).isEmpty, "an instrument counts as playing for a moment after its note ends")
 
-        // the stage
+        // the stage: the spotlight waits a measure (4 beats = 2 s here, 120 frames)
         let stage = JamStage()
         stage.sync(demo, force: true)
         check(stage.slots.count == 3 && stage.slots.map { $0.inst.kind } == [.piano, .bass, .drums], "an instrument on stage for each track")
-        check(stage.slots.last?.spot == nil && stage.slots.first?.spot != nil, "drums get no spotlight")
         check(visible(stage).isEmpty, "no spotlight before the music")
-        run(stage, beat: 0.3)
-        check(stage.spotTargets == [0, 1] && visible(stage) == [0, 1], "piano and bass playing (drums too): both in the spotlight")
-        check((stage.slots[0].spot?.light?.intensity ?? 0) > 2000 && stage.dim > 0.9, "…and the house lights go down")
+        run(stage, beat: 0.3, frames: 60)
+        check(stage.spotCandidate == [0, 1] && stage.spotTargets.isEmpty && visible(stage).isEmpty, "half a measure in: they would be lit, but the light waits")
+        run(stage, beat: 0.3, frames: 90)
+        check(stage.spotTargets == [0, 1] && visible(stage) == [0, 1], "after a measure of piano and bass (drums too): both in the spotlight")
+        check((stage.slots[0].spot?.light?.intensity ?? 0) > 1500 && stage.dim > 0.9, "…and the house lights go down")
         run(stage, beat: 0.3, playing: false, frames: 90)
-        check(visible(stage).isEmpty && stage.dim < 0.05, "stopped: the lights come back")
+        check(visible(stage).isEmpty && stage.dim < 0.05 && stage.spotCandidate.isEmpty, "stopped: the lights come back")
+        run(stage, beat: 0.3, frames: 60)
+        check(stage.spotTargets.isEmpty, "…and the next start waits a measure again")
 
-        func spotted(_ spec: [(String, Int, Bool)]) -> [Int] {
-            let s = JamStage(); s.sync(project(spec), force: true); run(s, beat: 1); return s.spotTargets
+        func spotted(_ spec: [(String, Int, Bool)], mix: ((inout Project) -> Void)? = nil, frames: Int = 150) -> [Int] {
+            var p = project(spec); mix?(&p)
+            let s = JamStage(); s.sync(p, force: true); run(s, beat: 1, frames: frames); return s.spotTargets
         }
         check(spotted([("Piano", 0, false), ("Bass", 33, false)]) == [0, 1], "two instruments, no drums: spotlight")
-        check(spotted([("Piano", 0, false), ("Drums", 0, true)]).isEmpty, "one instrument and the drums: no spotlight")
+        check(spotted([("Piano", 0, false), ("Drums", 0, true)]) == [0], "one instrument and the drums: a solo")
         check(spotted([("Piano", 0, false), ("Guitar", 25, false), ("Drums", 0, true)]) == [0, 1], "two instruments and the drums: spotlight")
         check(spotted([("Piano", 0, false), ("Guitar", 25, false), ("Bass", 33, false), ("Drums", 0, true)]).isEmpty, "three instruments: no spotlight")
-        check(spotted([("Piano", 0, false)]).isEmpty, "a lone instrument: no spotlight")
+        check(spotted([("Piano", 0, false)]) == [0], "a lone instrument: a solo")
+        check(spotted([("Drums", 0, true)]) == [0], "a lone drum kit: a drum solo")
+        check(spotted([("Piano", 0, false), ("Guitar", 25, false), ("Bass", 33, false)], frames: 100).isEmpty, "…and a lone instrument still waits for the measure")
+        check(spotted([("Piano", 0, false), ("Guitar", 25, false), ("Bass", 33, false)], mix: { $0.tracks[1].solo = true }) == [1], "soloing a track makes it a solo")
+        check(spotted([("Piano", 0, false), ("Guitar", 25, false), ("Bass", 33, false)], mix: { $0.tracks[0].solo = true; $0.tracks[2].solo = true }) == [0, 2], "two soloed tracks: a duet")
+        check(spotted([("Piano", 0, false), ("Guitar", 25, false), ("Bass", 33, false)], mix: { $0.tracks[1].mute = true }) == [0, 2], "muting one of three leaves a duet")
+        check(spotted([("Piano", 0, false), ("Guitar", 25, false)], mix: { $0.tracks[0].mute = true; $0.tracks[1].mute = true }).isEmpty, "everything muted: nobody to light")
+
+        // a change of who is playing starts the wait again
+        let sw = JamStage(); sw.sync(project([("Piano", 0, false), ("Bass", 33, false), ("Guitar", 25, false)]), force: true)
+        var mix = sw.slots.map { _ in true }
+        _ = mix.count
+        var p3 = project([("Piano", 0, false), ("Bass", 33, false), ("Guitar", 25, false)]); p3.tracks[2].mute = true
+        sw.setMix(p3); run(sw, beat: 1, frames: 150)
+        check(sw.spotTargets == [0, 1], "a duet is lit")
+        p3.tracks[2].mute = false; sw.setMix(p3); run(sw, beat: 1, frames: 30)
+        check(sw.spotTargets.isEmpty, "a third instrument joins: the lights come back up")
+        p3.tracks[0].mute = true; sw.setMix(p3); run(sw, beat: 1, frames: 60)
+        check(sw.spotCandidate == [1, 2] && sw.spotTargets.isEmpty, "…and a new pair waits for its own measure")
+        run(sw, beat: 1, frames: 90)
+        check(sw.spotTargets == [1, 2], "…then they are lit")
+        mix.removeAll()
 
         // the instruments follow the notes
         let st = JamStage(); st.sync(demo, force: true)
@@ -102,11 +128,27 @@ enum JamTest {
         check(g.count == 1 && g.values.first?.fret == 0, "E above middle C is an open guitar string")
         check(JamDrums.piece(for: 36) == "kick" && JamDrums.piece(for: 38) == "snare" && JamDrums.piece(for: 42) == "hat" && JamDrums.piece(for: 49) == "crash", "drum notes pick the right drum")
 
+        // the violin's bow sweeps across the strings while it plays, and rests aside when it doesn't
+        let vs = JamStage(); vs.sync(project([("Violin", 40, false)]), force: true)
+        if let v = vs.slots.first?.inst as? JamStringed, v.bowPosition != nil {
+            var seen: [Double] = []
+            for _ in 0..<6 { run(vs, beat: 1, frames: 15); seen.append(v.bowPosition ?? 9) }
+            check((seen.max() ?? 0) - (seen.min() ?? 0) > 0.4 && seen.allSatisfy { abs($0) < 1.0 }, "the bow sweeps across the strings while a note sounds")
+            run(vs, beat: 1, playing: false, frames: 60)
+            check((v.bowPosition ?? 0) > 1.5, "…and rests to the side when nothing plays")
+        } else { check(false, "the violin has a bow") }
+        let fiddle = JamStringed(kind: .strings, tint: .red, program: 40), cello = JamStringed(kind: .strings, tint: .red, program: 42)
+        check(fiddle.sideways && !cello.sideways && !JamStringed(kind: .guitar, tint: .red, program: 25).sideways, "a violin is held sideways; a cello and a guitar stand")
+        let vp = JamStage(); vp.sync(project([("Violin", 40, false), ("Cello", 42, false), ("Guitar", 25, false)]), force: true)
+        let scales = vp.slots.map { Double($0.inst.node.scale.x) }
+        check(scales[0] < scales[1] && scales[0] < scales[2] && scales[0] < 0.7, "the violin is smaller than the cello and the guitar")
+        check(JamStringed(kind: .guitar, tint: .red, program: 25).bowPosition == nil, "a guitar has no bow")
+
         // a big band builds, and a picture of it isn't blank
         let band = bigBand()
         let bs = JamStage(); bs.sync(band, force: true)
         check(bs.slots.count == 10, "ten instruments for ten tracks")
-        run(bs, beat: 2.2)
+        run(bs, beat: 2.2, frames: 300)
         check(bs.spotTargets.isEmpty, "a whole band: no spotlight")
         if let img = render(st, size: CGSize(width: 640, height: 400)) { check(colourCount(img) > 40, "the duet renders a picture") } else { print("SKIP no graphics for a rendering"); }
         print(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
@@ -167,7 +209,7 @@ enum JamTest {
         let size = CGSize(width: 1280, height: 760)
         func shot(_ name: String, _ project: Project, beat: Double, playing: Bool = true) {
             let s = JamStage(); s.sync(project, force: true)
-            run(s, beat: beat, playing: playing, frames: 80)
+            run(s, beat: beat, playing: playing, frames: 200)
             if let img = render(s, size: size) { save(img, "\(dir)/\(name).png"); print("wrote \(name).png (spot: \(s.spotTargets))") } else { print("no graphics") }
         }
         shot("duet", DemoSong.make(), beat: 2.1)

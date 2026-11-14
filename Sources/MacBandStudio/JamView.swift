@@ -59,6 +59,7 @@ final class JamView: SCNView {
     /// Moves the stage on by `dt` seconds (also used by the tests).
     func step(_ dt: Double) {
         if dirty { dirty = false; if stage.sync(session.project) { framedSize = .zero; needsLayout = true } }
+        stage.setMix(session.project)
         let beat = session.transport.beat
         stage.update(beat: beat, playing: session.transport.isPlaying, secondsPerBeat: 60 / max(20, session.project.bpm(at: beat)), dt: dt)
     }

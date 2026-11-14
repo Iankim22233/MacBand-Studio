@@ -99,8 +99,9 @@ struct JamTimeline {
     }
 }
 
-/// The spotlight rule: when exactly two instruments are playing (drums not counted), a spotlight picks them out.
-/// An instrument counts as playing for a moment after each note ends, so the light doesn't flicker between notes.
+/// The spotlight rule: when one or two instruments are playing (a solo or a duet; drums not counted), a spotlight picks them out.
+/// Drums alone get it too (a drum solo). An instrument counts as playing for a moment after each note ends, so the light doesn't
+/// flicker between notes. The stage waits a whole measure of the same instruments before it lights them.
 struct JamSpot {
     static let hold = 0.3
     private var last: [Int: Double] = [:]
@@ -114,9 +115,15 @@ struct JamSpot {
         last.filter { now - $0.value <= Self.hold }.map { $0.key }.sorted()
     }
 
-    /// The tracks to light: the two non-drum instruments, or none unless there are exactly two.
+    /// The tracks to light: the one or two non-drum instruments playing, the drums if they play alone, otherwise none.
     static func targets(_ playing: [Int], drums: [Bool]) -> [Int] {
-        let melodic = playing.filter { $0 < drums.count && !drums[$0] }
-        return melodic.count == 2 ? melodic : []
+        let valid = playing.filter { $0 < drums.count }
+        let melodic = valid.filter { !drums[$0] }
+        if (1...2).contains(melodic.count) { return melodic }
+        if melodic.isEmpty {
+            let kit = valid.filter { drums[$0] }
+            if (1...2).contains(kit.count) { return kit }
+        }
+        return []
     }
 }
