@@ -242,6 +242,27 @@ import Foundation
         key(roll, "s", code: 1)
         check(notes().first { $0.id == firstID }?.isSlide == true, "S toggles slide on the selection")
         key(roll, "s", code: 1)
+        // several selected notes: the Slide button / S link them into one slide
+        do {
+            let base = notes().filter { $0.pitch >= 60 }.map { $0.start }.max() ?? 0
+            let startAt = (base + 8).rounded(.up)
+            s.selectedNoteIDs = []
+            let before = notes().count
+            for (k, pitch) in [67, 69, 71, 72].enumerated() { click(roll, CGPoint(x: rx(startAt + Double(k)) + 3, y: ry(pitch)), flags: .command) }
+            let made = notes().suffix(4)
+            check(notes().count == before + 4 && made.allSatisfy { !$0.isSlide }, "four notes in a row are drawn")
+            s.selectedNoteIDs = Set(made.map { $0.id })
+            s.slideAction()                                              // what the Slide button does
+            let linkedNotes = notes().filter { n in made.contains { $0.id == n.id } }.sorted { $0.start < $1.start }
+            check(!linkedNotes[0].isSlide && linkedNotes[1...].allSatisfy { $0.isSlide }, "the Slide button links the selected notes: one note and three slides")
+            check(linkedNotes[0].length >= 3.9, "…the first one stretched under the whole run (\(linkedNotes[0].length) beats)")
+            s.selectedNoteIDs = Set(made.map { $0.id })
+            key(roll, "s", code: 1)                                       // S does the same thing: unlink
+            check(notes().filter { n in made.contains { $0.id == n.id } }.allSatisfy { !$0.isSlide }, "pressing it again (or S) unlinks them")
+            s.undo(); s.undo()                                            // the unlink, the link
+            for n in made { s.selectedNoteIDs = [n.id] }
+            s.selectedNoteIDs = Set(made.map { $0.id }); key(roll, "\u{7F}", code: 51)       // tidy up: delete the four notes
+        }
         // undo
         let before = notes().count
         s.selectedNoteIDs = [firstID]

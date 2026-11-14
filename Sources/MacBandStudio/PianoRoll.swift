@@ -142,7 +142,7 @@ struct RollToolbar: View {
                     IconButton(symbol: t.icon, active: session.activeTool == t, help: t == .draw ? "Draw tool (P). Or hold ⌘ over the roll to draw" : "\(t.rawValue) tool", size: 26) { session.tool = t }
                 }
             }
-            Button { session.slideMode.toggle() } label: {
+            Button { session.slideAction() } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up.right").font(Theme.vista(10))
                     Text("Slide").font(Theme.vista(11))
@@ -152,7 +152,7 @@ struct RollToolbar: View {
                 .background(VistaFace(state: session.slideMode))
             }
             .buttonStyle(.plain)
-            .help("Slide notes glide the sounding note to their pitch. New notes are slide notes while this is on; press S to convert selected notes.")
+            .help("Slide notes glide the sounding note to their pitch. Select two or more notes and press this (or S) to link them into one slide, again to unlink. With nothing selected, new notes are drawn as slide notes.")
 
             Menu {
                 ForEach(Self.snaps, id: \.0) { s in
@@ -442,9 +442,14 @@ final class PianoRollView: PlatformView {
         // Slide connectors then notes
         let notes = c.notes
         let normals = notes.filter { !$0.isSlide }
-        for n in notes where n.isSlide {
+        // Slides on one base note glide one after the other, so each starts from the pitch the one before it reached.
+        let slides = notes.filter { $0.isSlide }.sorted { $0.start < $1.start }
+        var reached: [UUID: Int] = [:]                    // base note → the pitch its last slide ended on
+        for n in slides {
             guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
-            let from = CGPoint(x: x(n.start), y: y(src.pitch) + rowH / 2)
+            let fromPitch = reached[src.id] ?? src.pitch
+            reached[src.id] = n.pitch
+            let from = CGPoint(x: x(n.start), y: y(fromPitch) + rowH / 2)
             let to = CGPoint(x: x(n.end), y: y(n.pitch) + rowH / 2)
             ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
             ctx.setLineWidth(2)
@@ -899,8 +904,7 @@ final class PianoRollView: PlatformView {
             let d = (event.keyCode == 126 ? 1 : -1) * (cmd ? 12 : 1)
             session.pushUndo(); mutateNotes { notes in for i in notes.indices where sel.contains(notes[i].id) { notes[i].pitch = min(127, max(0, notes[i].pitch + d)) } }
         case (_, "s") where !cmd:
-            guard !sel.isEmpty else { session.slideMode.toggle(); return }
-            session.pushUndo(); mutateNotes { notes in for i in notes.indices where sel.contains(notes[i].id) { notes[i].isSlide.toggle() } }
+            session.slideAction()
         case (_, "q") where !cmd:
             session.pushUndo()
             mutateNotes { notes in

@@ -45,6 +45,39 @@ enum MIDITools {
         }
     }
 
+    /// Links the chosen notes into one slide, or takes a linked slide apart again.
+    ///
+    /// A slide note glides the note that is sounding when it starts to its own pitch, so a run of glides needs one long note
+    /// underneath. Linking turns the first chosen note into that long note (it is stretched to the end of the last one) and the
+    /// rest into slide notes, in time order, each starting where it already was: the pitch then travels from note to note.
+    /// Of notes that start together (a chord) only the highest is used. Notes that overlap the next one are shortened so each
+    /// glide ends where the next begins. Returns true when linked, false when unlinked, nil when fewer than two notes can be linked.
+    @discardableResult
+    static func toggleSlideLink(_ notes: inout [Note], ids: Set<UUID>) -> Bool? {
+        let picked = notes.indices.filter { ids.contains(notes[$0].id) }
+            .sorted { (notes[$0].start, -notes[$0].pitch) < (notes[$1].start, -notes[$1].pitch) }
+        var chain: [Int] = []
+        for i in picked where chain.last.map({ notes[i].start > notes[$0].start + 1e-6 }) ?? true { chain.append(i) }
+        guard chain.count >= 2 else { return nil }
+        let anchor = chain[0], rest = Array(chain.dropFirst())
+
+        if rest.allSatisfy({ notes[$0].isSlide }) {                       // already linked: take it apart
+            for i in rest { notes[i].isSlide = false }
+            let firstSlideStart = notes[rest[0]].start
+            if notes[anchor].end > firstSlideStart + 1e-6 { notes[anchor].length = max(0.0625, firstSlideStart - notes[anchor].start) }
+            return false
+        }
+        notes[anchor].isSlide = false
+        for (k, i) in rest.enumerated() {
+            notes[i].isSlide = true
+            let nextStart = k + 1 < rest.count ? notes[rest[k + 1]].start : Double.infinity
+            if notes[i].end > nextStart - 1e-6 { notes[i].length = max(0.0625, nextStart - notes[i].start) }
+        }
+        let last = notes[rest[rest.count - 1]]
+        notes[anchor].length = max(notes[anchor].length, last.end - notes[anchor].start)
+        return true
+    }
+
     static func transpose(_ notes: inout [Note], ids: Set<UUID>?, semitones: Int) {
         for i in notes.indices where applies(notes[i], ids) { notes[i].pitch = min(127, max(0, notes[i].pitch + semitones)) }
     }
@@ -114,6 +147,28 @@ struct SeededRNG: RandomNumberGenerator {
 
 extension Session {
     /// Runs a note tool on the selected notes, or on the whole pattern when nothing is selected.
+    /// The Slide button and the S key. Two or more notes selected: link them into one slide (or unlink them again). One selected
+    /// note: make it a slide note or a normal note. Nothing selected: new notes are drawn as slide notes (or not).
+    func slideAction() {
+        guard !selectedNoteIDs.isEmpty, let loc = selectedClipLocation else { slideMode.toggle(); return }
+        let ids = selectedNoteIDs
+        var notes = project.tracks[loc.track].clips[loc.clip].notes
+        if ids.count == 1 {
+            for i in notes.indices where ids.contains(notes[i].id) { notes[i].isSlide.toggle() }
+            edit { $0.tracks[loc.track].clips[loc.clip].notes = notes }
+            return
+        }
+        switch MIDITools.toggleSlideLink(&notes, ids: ids) {
+        case .none: showToast("Select two or more notes (one after another) to link them into a slide")
+        case .some(let linked):
+            edit { p in
+                p.tracks[loc.track].clips[loc.clip].notes = notes
+                p.tracks[loc.track].clips[loc.clip].fitLengthToNotes(minBeats: p.beatsPerBar, quantum: p.beatsPerBar)
+            }
+            showToast(linked ? "Linked \(ids.count) notes into a slide" : "Unlinked the slide")
+        }
+    }
+
     func midiTool(_ body: (inout [Note], Set<UUID>?) -> Void) {
         guard let loc = selectedClipLocation else { return }
         let ids: Set<UUID>? = selectedNoteIDs.isEmpty ? nil : selectedNoteIDs
@@ -183,6 +238,38 @@ enum MIDIToolsTest {
         var r = [N(60, 0, 1), N(62, 1, 1), N(64, 2, 2)]
         MIDITools.reverse(&r, ids: nil)
         check(r.first { $0.pitch == 64 }!.start == 0 && r.first { $0.pitch == 60 }!.start == 3, "reverse mirrors the notes in time")
+ // (slide linking is checked just below)
+        // linking notes into one slide
+        func S(_ p: Int, _ s: Double, _ l: Double) -> Note { Note(pitch: p, start: s, length: l) }
+        var sl = [S(60, 0, 1), S(62, 1, 1), S(64, 2, 1), S(65, 3, 1), S(72, 8, 1)]
+        let picked = Set(sl.prefix(4).map { $0.id })
+        let linked = MIDITools.toggleSlideLink(&sl, ids: picked)
+        check(linked == true, "linking four notes into a slide works")
+        check(!sl[0].isSlide && sl[1...3].allSatisfy { $0.isSlide } && !sl[4].isSlide, "the first stays a normal note, the next three become slide notes, others are left alone")
+        check(abs(sl[0].length - 4) < 1e-9, "the first note is stretched to cover the whole run (\(sl[0].length) beats)")
+        check(sl[1...3].map { $0.start } == [1, 2, 3] && sl[1...3].allSatisfy { $0.length == 1 } && sl.map { $0.pitch } == [60, 62, 64, 65, 72], "the slides keep their place, length and pitch")
+        // played back: one note, and the pitch bend travels 0 → +2 → +4 → +5 semitones
+        var tr = Track(name: "t", colorIndex: 0); var cl = Clip(name: "c", start: 0, length: 16); cl.notes = sl; tr.clips = [cl]; tr.bendRange = 12
+        let evs = MIDIFile.trackEvents(tr, channel: 0, forExport: false)
+        let ons = evs.filter { $0.bytes.first == 0x90 }
+        check(ons.count == 2 && ons.map { Int($0.bytes[1]) }.sorted() == [60, 72], "played back, the run is a single note (60) plus the separate one")
+        let bends = evs.filter { $0.bytes.first == 0xE0 }.sorted { $0.tick < $1.tick }
+        func semis(_ e: MIDIFile.Ev) -> Double { (Double(Int(e.bytes[1]) | (Int(e.bytes[2]) << 7)) - 8192) / 8192 * 12 }
+        let peak = bends.map { semis($0) }.max() ?? 0
+        check(abs(peak - 5) < 0.05, String(format: "the pitch glides from note to note up to +5 semitones (%.2f)", peak))
+        let at2 = bends.filter { Double($0.tick) / 480 <= 3.0 + 1e-6 }.last.map { semis($0) } ?? -99
+        check(abs(at2 - 4) < 0.05, String(format: "…reaching +4 as the third note ends (%.2f)", at2))
+        let unlinked = MIDITools.toggleSlideLink(&sl, ids: picked)
+        check(unlinked == false && sl.allSatisfy { !$0.isSlide } && abs(sl[0].length - 1) < 1e-9, "doing it again unlinks them and gives the first note its own length back")
+        var one = [S(60, 0, 1)]
+        check(MIDITools.toggleSlideLink(&one, ids: Set(one.map { $0.id })) == nil, "one note alone can't be linked")
+        var chord = [S(60, 0, 1), S(67, 0, 1), S(62, 1, 1), S(64, 2, 1)]
+        MIDITools.toggleSlideLink(&chord, ids: Set(chord.map { $0.id }))
+        check(chord[1].pitch == 67 && !chord[1].isSlide && abs(chord[1].length - 3) < 1e-9 && chord[2].isSlide && chord[3].isSlide
+              && chord[0].pitch == 60 && !chord[0].isSlide && chord[0].length == 1, "of notes that start together only the highest takes part; the other keeps its own place and length")
+        var over = [S(60, 0, 3), S(62, 1, 3), S(64, 2, 3)]
+        MIDITools.toggleSlideLink(&over, ids: Set(over.map { $0.id }))
+        check(over[1].length == 1 && abs(over[0].length - 5) < 1e-9, "a note that runs over the next one is shortened so each glide ends where the next begins")
         print(fails == 0 ? "ALL MIDI TOOL CHECKS PASSED" : "\(fails) MIDI TOOL CHECK(S) FAILED")
         return fails == 0 ? 0 : 1
     }

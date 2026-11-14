@@ -23,6 +23,13 @@ extension Session {
             self.selectedClipID = self.project.tracks[ti].clips.first?.id
             if args.contains("--demo-mute-solo") { self.project.tracks[1].mute = true; self.project.tracks[2].solo = true }      // for pictures of the M and S buttons
             self.demoPanel(value("--demo-panel"))
+            if args.contains("--demo-slide"), let loc = self.selectedClipLocation {            // pictures of linked slides: a short melody, linked with Slide
+                var melody: [Note] = []
+                for (k, pitch) in [62, 66, 69, 74, 71, 67].enumerated() { melody.append(Note(pitch: pitch, start: 4.0 + Double(k) * 1.0, length: 0.75)) }
+                self.modify { $0.tracks[loc.track].clips[loc.clip].notes.append(contentsOf: melody) }
+                self.selectedNoteIDs = Set(melody.prefix(5).map { $0.id })
+                self.slideAction()
+            }
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             if args.contains("--demo-play") {                      // capture while the music plays (track glow)
                 self.togglePlay()
