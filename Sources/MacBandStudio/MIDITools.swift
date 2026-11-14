@@ -51,20 +51,33 @@ enum MIDITools {
     /// underneath. Linking turns the first chosen note into that long note (it is stretched to the end of the last one) and the
     /// rest into slide notes, in time order, each starting where it already was: the pitch then travels from note to note.
     /// Of notes that start together (a chord) only the highest is used. Notes that overlap the next one are shortened so each
-    /// glide ends where the next begins. Returns true when linked, false when unlinked, nil when fewer than two notes can be linked.
+    /// glide ends where the next begins.
+    ///
+    /// If every chosen note starts at the same moment (for example a note with a slide placed on top of it), the one that was
+    /// drawn first is the note that sounds, and the second glides from it to its own pitch.
+    /// Returns true when linked, false when unlinked, nil when fewer than two notes can be linked.
     @discardableResult
     static func toggleSlideLink(_ notes: inout [Note], ids: Set<UUID>) -> Bool? {
-        let picked = notes.indices.filter { ids.contains(notes[$0].id) }
-            .sorted { (notes[$0].start, -notes[$0].pitch) < (notes[$1].start, -notes[$1].pitch) }
-        var chain: [Int] = []
-        for i in picked where chain.last.map({ notes[i].start > notes[$0].start + 1e-6 }) ?? true { chain.append(i) }
+        let inOrder = notes.indices.filter { ids.contains(notes[$0].id) }                 // the order they were drawn in
+        guard inOrder.count >= 2 else { return nil }
+        let sameStart = inOrder.allSatisfy { abs(notes[$0].start - notes[inOrder[0]].start) < 1e-6 }
+        var chain: [Int]
+        if sameStart {
+            chain = Array(inOrder.prefix(2))
+        } else {
+            chain = []
+            let byTime = inOrder.sorted { (notes[$0].start, -notes[$0].pitch) < (notes[$1].start, -notes[$1].pitch) }
+            for i in byTime where chain.last.map({ notes[i].start > notes[$0].start + 1e-6 }) ?? true { chain.append(i) }
+        }
         guard chain.count >= 2 else { return nil }
         let anchor = chain[0], rest = Array(chain.dropFirst())
 
         if rest.allSatisfy({ notes[$0].isSlide }) {                       // already linked: take it apart
             for i in rest { notes[i].isSlide = false }
             let firstSlideStart = notes[rest[0]].start
-            if notes[anchor].end > firstSlideStart + 1e-6 { notes[anchor].length = max(0.0625, firstSlideStart - notes[anchor].start) }
+            if notes[anchor].end > firstSlideStart + 1e-6, firstSlideStart > notes[anchor].start + 1e-6 {
+                notes[anchor].length = max(0.0625, firstSlideStart - notes[anchor].start)
+            }
             return false
         }
         notes[anchor].isSlide = false
@@ -159,7 +172,7 @@ extension Session {
             return
         }
         switch MIDITools.toggleSlideLink(&notes, ids: ids) {
-        case .none: showToast("Select two or more notes (one after another) to link them into a slide")
+        case .none: showToast("Select two or more notes to link them into a slide")
         case .some(let linked):
             edit { p in
                 p.tracks[loc.track].clips[loc.clip].notes = notes
@@ -267,6 +280,14 @@ enum MIDIToolsTest {
         MIDITools.toggleSlideLink(&chord, ids: Set(chord.map { $0.id }))
         check(chord[1].pitch == 67 && !chord[1].isSlide && abs(chord[1].length - 3) < 1e-9 && chord[2].isSlide && chord[3].isSlide
               && chord[0].pitch == 60 && !chord[0].isSlide && chord[0].length == 1, "of notes that start together only the highest takes part; the other keeps its own place and length")
+        // two notes on the same beat (a slide placed on top of its note): the first drawn sounds, the second glides from it
+        var stacked = [S(60, 0, 1), S(67, 0, 2)]
+        check(MIDITools.toggleSlideLink(&stacked, ids: Set(stacked.map { $0.id })) == true, "two notes that start together link too")
+        check(!stacked[0].isSlide && stacked[1].isSlide && abs(stacked[0].length - 2) < 1e-9 && stacked[1].start == 0 && stacked[1].length == 2, "the first drawn stays the sounding note (stretched under the glide), the second glides to its pitch")
+        var stackedTrack = Track(name: "t", colorIndex: 0); var stackedClip = Clip(name: "c", start: 0, length: 8); stackedClip.notes = stacked; stackedTrack.clips = [stackedClip]; stackedTrack.bendRange = 12
+        let stackedEvs = MIDIFile.trackEvents(stackedTrack, channel: 0, forExport: false)
+        check(stackedEvs.filter { $0.bytes.first == 0x90 }.count == 1 && (stackedEvs.filter { $0.bytes.first == 0xE0 }.map { semis($0) }.max() ?? 0) > 6.9, "…and plays as one note gliding up seven semitones")
+        check(MIDITools.toggleSlideLink(&stacked, ids: Set(stacked.map { $0.id })) == false && stacked.allSatisfy { !$0.isSlide } && stacked[1].length == 2, "…and unlinks again (both normal notes, nothing else changed)")
         var over = [S(60, 0, 3), S(62, 1, 3), S(64, 2, 3)]
         MIDITools.toggleSlideLink(&over, ids: Set(over.map { $0.id }))
         check(over[1].length == 1 && abs(over[0].length - 5) < 1e-9, "a note that runs over the next one is shortened so each glide ends where the next begins")
