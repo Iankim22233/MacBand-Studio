@@ -64,6 +64,7 @@ struct MacBandApp: App {
             }
             CommandMenu("View") {
                 Button("Visualizer Window") { VisualizerWindow.shared.show(session) }.keyboardShortcut("v", modifiers: [.command, .option])
+                Button("3D Stage Window") { JamWindow.shared.show(session) }.keyboardShortcut("j", modifiers: [.command, .option])
                 Button("Video Window") { VideoWindow.shared.show(session) }.keyboardShortcut("m", modifiers: [.command, .option])
                 Divider()
                 ButtonColorMenu()

@@ -16,13 +16,21 @@ extension Session {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             self.project = DemoSong.make()
-            self.engine.syncTracks(self.project.tracks)
+            self.engine.syncTracks(self.project.tracks, master: self.project.masterInserts)
             self.applyMix()
             let ti = Int(value("--demo-track") ?? "0") ?? 0
             self.selectedTrackID = self.project.tracks[ti].id
             self.selectedClipID = self.project.tracks[ti].clips.first?.id
             if args.contains("--demo-mute-solo") { self.project.tracks[1].mute = true; self.project.tracks[2].solo = true }      // for pictures of the M and S buttons
             self.demoPanel(value("--demo-panel"))
+            if args.contains("--demo-jam") { JamWindow.shared.show(self) }       // the 3D stage in its own window
+            if args.contains("--demo-slide"), let loc = self.selectedClipLocation {            // pictures of linked slides: a short melody, linked with Slide
+                var melody: [Note] = []
+                for (k, pitch) in [62, 66, 69, 74, 71, 67].enumerated() { melody.append(Note(pitch: pitch, start: 4.0 + Double(k) * 1.0, length: 0.75)) }
+                self.modify { $0.tracks[loc.track].clips[loc.clip].notes.append(contentsOf: melody) }
+                self.selectedNoteIDs = Set(melody.prefix(5).map { $0.id })
+                self.slideAction()
+            }
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             #if os(macOS)
             if let v = value("--demo-video") {                      // a video clip at the start: its frames in the arrangement, its picture in the Video window
@@ -52,6 +60,7 @@ extension Session {
                     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
                 }
                 let main = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })
+                if args.contains("--demo-jam") { grab(JamWindow.shared.window, to: out); exit(0) }
                 grab(main, to: out)
                 grab(main?.attachedSheet, to: out.replacingOccurrences(of: ".png", with: "-sheet.png"))
                 #if os(macOS)
@@ -76,6 +85,10 @@ extension Session {
                 UserDefaults.standard.removeObject(forKey: "visualMode")      // a picture run must not change the saved choice
             }
         case "browser": showProjectBrowser = true
+        case "master":                                      // the Master track selected, with two example effects
+            bottomPanel = .mixer
+            project.masterInserts = [MasterTest.delay(), PluginSpec(format: .au, name: "AUMultibandCompressor", vendor: "Apple", isInstrument: false)]
+            selectMaster()
         case "intro":
             introStartPage = Int(CommandLine.arguments.firstIndex(of: "--demo-intro-page").flatMap { $0 + 1 < CommandLine.arguments.count ? CommandLine.arguments[$0 + 1] : nil } ?? "0") ?? 0
             showIntro = true
