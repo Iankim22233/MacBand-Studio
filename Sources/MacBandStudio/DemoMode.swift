@@ -23,6 +23,7 @@ extension Session {
             self.selectedClipID = self.project.tracks[ti].clips.first?.id
             if args.contains("--demo-mute-solo") { self.project.tracks[1].mute = true; self.project.tracks[2].solo = true }      // for pictures of the M and S buttons
             self.demoPanel(value("--demo-panel"))
+            if args.contains("--demo-jam") { JamWindow.shared.show(self) }       // the 3D stage in its own window
             if args.contains("--demo-slide"), let loc = self.selectedClipLocation {            // pictures of linked slides: a short melody, linked with Slide
                 var melody: [Note] = []
                 for (k, pitch) in [62, 66, 69, 74, 71, 67].enumerated() { melody.append(Note(pitch: pitch, start: 4.0 + Double(k) * 1.0, length: 0.75)) }
@@ -50,6 +51,7 @@ extension Session {
                     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
                 }
                 let main = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })
+                if args.contains("--demo-jam") { grab(JamWindow.shared.window, to: out); exit(0) }
                 grab(main, to: out)
                 grab(main?.attachedSheet, to: out.replacingOccurrences(of: ".png", with: "-sheet.png"))
                 exit(0)

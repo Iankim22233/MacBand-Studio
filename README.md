@@ -92,6 +92,28 @@ The **Visualizer** tab (or **View ▸ Visualizer Window**, ⌥⌘V, which can go
 * **Spectrum shapes** driven by the real audio output: Bars, Mirror, Mountains and Dots, in Accent, Rainbow, Fire
   or Ice colours.
 
+### 3D Stage
+
+**View ▸ 3D Stage Window** (⌥⌘J, or the **3D Stage** button in the Visualizer tab) opens a 3D band in a window of its own, in
+the spirit of midis2jam2: every track with notes gets an instrument on a stage, chosen from its sound, and it plays along.
+
+* **Piano, organ, mallets**: the keys go down (and glow in the track's colour) as notes sound, with the coming notes falling
+  towards them.
+* **Guitar, bass, violin family**: fingers appear on the frets for each sounding note (a chord goes on separate strings), the
+  string buzzes, and violins and cellos are bowed (the bow sweeps across the strings while it plays).
+* **Trumpet, trombone, sax**: valves go down by pitch, the bell glows and dots drift out of it. **Flute**: keys close by pitch.
+* **Synths and everything else**: a row of light pillars that rise with the notes.
+* **Drums**: the kick, snare, toms, hi-hat, crash, ride and a percussion pad are hit by the right MIDI notes, with sticks.
+* **Spotlight**: when one or two instruments are playing (a solo or a duet), the house lights go down and a spotlight picks
+  them out. Drums behind them don't count, and drums playing alone get the light too (a drum solo). The light comes on only after
+  the same instruments have played for a full measure, and goes off as soon as someone else joins (or everyone stops). Muted
+  tracks are silent on stage, and **Solo** on a track makes it the soloist. An instrument counts as playing for a moment after
+  each note, so the light doesn't flicker between notes.
+
+Drag to orbit, scroll to zoom, double-click to reset the camera; the window can go full screen. Plug-in and GarageBand sounds
+are told apart by their name (a track called "Trumpet" is a trumpet). `--jamtest` checks the instruments and the spotlight rule,
+and `--jamshots <dir>` renders pictures of the stage.
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track
@@ -132,7 +154,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
 `--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).
