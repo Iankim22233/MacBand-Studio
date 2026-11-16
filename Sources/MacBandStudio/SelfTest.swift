@@ -100,6 +100,7 @@ import AVFoundation
         case_("plain note at 0", notes: [Note(pitch: 60, start: 0, length: 2)])
         case_("plain note at 1", notes: [Note(pitch: 60, start: 1, length: 2)])
         case_("slide 60→67 (bend 12)", notes: [Note(pitch: 60, start: 0, length: 3), Note(pitch: 67, start: 0.5, length: 1, isSlide: true)])
+        case_("slide 60→84 (range 2, widened to reach it)", notes: [Note(pitch: 60, start: 0, length: 3), Note(pitch: 84, start: 0.5, length: 1, isSlide: true)], bend: 2)
         case_("slide 60→72 (bend 12)", notes: [Note(pitch: 60, start: 0, length: 3), Note(pitch: 72, start: 0.5, length: 1, isSlide: true)])
 
         // 3c. loop wrap: a note on the loop's first beat must retrigger every pass (2 beats = 1s)
