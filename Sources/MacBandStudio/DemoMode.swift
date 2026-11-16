@@ -41,6 +41,11 @@ extension Session {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
             }
             #endif
+            if args.contains("--demo-countdown") {                 // the count before recording, caught on its second beat
+                self.transport.beat = 0
+                self.toggleRecord()
+                try? await Task.sleep(nanoseconds: 700_000_000)
+            }
             if args.contains("--demo-play") {                      // capture while the music plays (track glow)
                 self.togglePlay()
                 try? await Task.sleep(nanoseconds: UInt64((Double(value("--demo-after") ?? "1.3") ?? 1.3) * 1e9))

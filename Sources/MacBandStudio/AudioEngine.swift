@@ -164,6 +164,17 @@ final class AudioEngine {
         do { try engine.start() } catch { onError?("Audio engine failed to start: \(error.localizedDescription)") }
     }
 
+    // MARK: - Count-in (the click before a recording starts, audible even with the metronome off)
+
+    func countInBegin() { click.volume = 1 }
+    func countInClick(accent: Bool) {
+        guard clickLoaded else { return }
+        let note: UInt8 = accent ? 76 : 77
+        click.startNote(note, withVelocity: accent ? 120 : 90, onChannel: 9)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [click] in click.stopNote(note, onChannel: 9) }
+    }
+    func countInEnd() { click.volume = metronomeOn ? 1 : 0 }
+
     private func loadClick() {
         DispatchQueue.global().async { [self] in
             do {

@@ -147,6 +147,7 @@ extension Session {
             if event.modifierFlags.intersection([.command, .control, .option]).isEmpty == false { return event }
             guard ["main", "visualizer", "jam", "video"].contains(NSApp.keyWindow?.identifier?.rawValue ?? "") else { return event }
             if event.type == .keyDown {
+                if event.keyCode == 53, self.countdownTask != nil { self.cancelCountdown(); return nil }     // Esc calls off the count-in
                 if event.keyCode == 49 && !event.isARepeat { self.togglePlay(); return nil }   // space
                 if !self.musicalTyping, !event.isARepeat {
                     switch event.charactersIgnoringModifiers {
