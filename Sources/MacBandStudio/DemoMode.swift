@@ -24,6 +24,15 @@ extension Session {
             if args.contains("--demo-mute-solo") { self.project.tracks[1].mute = true; self.project.tracks[2].solo = true }      // for pictures of the M and S buttons
             self.demoPanel(value("--demo-panel"))
             try? await Task.sleep(nanoseconds: 1_800_000_000)
+            #if os(macOS)
+            if let v = value("--demo-video") {                      // a video clip at the start: its frames in the arrangement, its picture in the Video window
+                self.transport.beat = 0
+                self.importVideo(url: URL(fileURLWithPath: v))
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                self.transport.beat = Double(value("--demo-video-beat") ?? "3") ?? 3
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+            #endif
             if args.contains("--demo-play") {                      // capture while the music plays (track glow)
                 self.togglePlay()
                 try? await Task.sleep(nanoseconds: UInt64((Double(value("--demo-after") ?? "1.3") ?? 1.3) * 1e9))
@@ -45,6 +54,9 @@ extension Session {
                 let main = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" })
                 grab(main, to: out)
                 grab(main?.attachedSheet, to: out.replacingOccurrences(of: ".png", with: "-sheet.png"))
+                #if os(macOS)
+                if args.contains("--demo-video") { grab(VideoWindow.shared.window, to: out.replacingOccurrences(of: ".png", with: "-video.png")) }
+                #endif
                 exit(0)
             }
         }

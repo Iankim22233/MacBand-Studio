@@ -58,6 +58,10 @@ if CommandLine.arguments.contains("--audiotest") {
     MainActor.assumeIsolated { TuneTest.sessionTest() }
     exit(0)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--videomake"), i + 1 < CommandLine.arguments.count {      // a movie for pictures of video clips
+    exit(MainActor.assumeIsolated { VideoTest.make(CommandLine.arguments[i + 1]) })
+}
+if CommandLine.arguments.contains("--videotest") { exit(MainActor.assumeIsolated { VideoTest.run() }) }
 if CommandLine.arguments.contains("--tunetest") {
     MainActor.assumeIsolated { TuneTest.run() }
     exit(0)

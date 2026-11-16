@@ -145,7 +145,7 @@ extension Session {
             guard let self else { return event }
             if let r = NSApp.keyWindow?.firstResponder, r is NSTextView { return event }
             if event.modifierFlags.intersection([.command, .control, .option]).isEmpty == false { return event }
-            guard ["main", "visualizer"].contains(NSApp.keyWindow?.identifier?.rawValue ?? "") else { return event }
+            guard ["main", "visualizer", "video"].contains(NSApp.keyWindow?.identifier?.rawValue ?? "") else { return event }
             if event.type == .keyDown {
                 if event.keyCode == 49 && !event.isARepeat { self.togglePlay(); return nil }   // space
                 if !self.musicalTyping, !event.isARepeat {

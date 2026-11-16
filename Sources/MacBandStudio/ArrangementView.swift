@@ -212,7 +212,7 @@ struct TrackHeaderRow: View {
                         .shadow(color: .black.opacity(0.1 + 0.55 * (levels.glow[track.id] ?? 0)), radius: 1.5, x: 0, y: 1)
                         .onTapGesture(count: 2) { nameText = track.name; renaming = true; focused = true }
                 }
-                Text(track.kind == .audio ? "Audio · \(track.audioClips.count) clip\(track.audioClips.count == 1 ? "" : "s")" : track.instrument.displayName).font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+                Text(track.kind == .audio ? "\(track.audioClips.contains { $0.hasVideo } ? "Video" : "Audio") · \(track.audioClips.count) clip\(track.audioClips.count == 1 ? "" : "s")" : track.instrument.displayName).font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
                     .shadow(color: .black.opacity(0.1 + 0.55 * (levels.glow[track.id] ?? 0)), radius: 1.5, x: 0, y: 1)
             }
             .padding(.leading, 10)
@@ -604,9 +604,34 @@ final class TimelineView: PlatformView {
         ctx.saveGState(); ctx.addPath(path); ctx.clip()
         ctx.setFillColor(col.withAlphaComponent(muted ? 0.10 : (selected ? 0.30 : 0.18)).cgColor); ctx.fill(r)
         ctx.setFillColor(col.withAlphaComponent(muted ? 0.25 : 0.85).cgColor); ctx.fill(CGRect(x: r.minX, y: r.minY, width: r.width, height: 16))
+        #if os(macOS)
+        if let vf = c.video {                           // video clip: a strip of its frames under the title
+            VideoThumbs.shared.onReady = { [weak self] in self?.needsDisplay = true }
+            let area = CGRect(x: r.minX, y: r.minY + 16, width: r.width, height: r.height - 16)
+            if let frames = VideoThumbs.shared.frames(vf), !frames.isEmpty, area.height > 6 {
+                let tileW = max(8, area.height * 16 / 9)
+                var tx = area.minX
+                let startSec = project.seconds(atBeat: c.start)
+                while tx < min(area.maxX, bounds.width) {
+                    let mid = min(area.maxX, tx + tileW / 2)
+                    let sec = project.seconds(atBeat: beat(mid)) - startSec + c.offset
+                    let i = min(frames.count - 1, max(0, Int(sec / max(0.001, c.duration) * Double(frames.count))))
+                    if let img = frames[i], tx + tileW > 0 {
+                        ctx.saveGState()
+                        ctx.clip(to: CGRect(x: tx, y: area.minY, width: min(tileW, area.maxX - tx), height: area.height))
+                        ctx.translateBy(x: 0, y: area.minY + area.maxY); ctx.scaleBy(x: 1, y: -1)         // this view is flipped, images are not
+                        ctx.setAlpha(muted ? 0.35 : 0.9)
+                        ctx.draw(img, in: CGRect(x: tx, y: area.minY, width: tileW, height: area.height))
+                        ctx.restoreGState()
+                    }
+                    tx += tileW
+                }
+            }
+        }
+        #endif
         // waveform
         let mid = r.minY + 16 + (r.height - 16) / 2, amp = (r.height - 20) / 2
-        ctx.setFillColor(col.withAlphaComponent(muted ? 0.3 : 0.95).cgColor)
+        ctx.setFillColor(col.withAlphaComponent(muted ? 0.3 : (c.hasVideo ? 0.7 : 0.95)).cgColor)
         let p = project
         let startSec = p.seconds(atBeat: c.start)
         c.peaks.withUnsafeBytes { raw in
@@ -634,7 +659,7 @@ final class TimelineView: PlatformView {
         if r.width > 24 {
             var a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold)]
             a[.foregroundColor] = NSColor(white: 0, alpha: muted ? 0.5 : 0.78)
-            let label = (c.tune?.enabled == true ? "♪ " : "") + c.name
+            let label = (c.tune?.enabled == true ? "♪ " : "") + (c.hasVideo ? "▶ " : "") + c.name
             (label as NSString).draw(at: CGPoint(x: r.minX + 6, y: r.minY + 2), withAttributes: a)
         }
         ctx.restoreGState()
