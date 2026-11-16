@@ -193,7 +193,9 @@ enum MIDIFile {
     /// sequence for AVAudioSequencer (one MIDI track per project track, plus metronome).
     static func build(_ p: Project, forExport: Bool, metronome: Bool = false) -> Data {
         let shift = forExport ? 0 : ticks(playbackLead)
-        var chunks: [[UInt8]] = [trackChunk(conductorEvents(p), shift: shift, keepTempoAtZero: true)]
+        var conductor = conductorEvents(p)
+        if forExport { conductor += p.tags.map { meta(ticks($0.start), 0x06, Array($0.name.utf8)) } }       // tags leave as MIDI markers
+        var chunks: [[UInt8]] = [trackChunk(conductor, shift: shift, keepTempoAtZero: true)]
         var nextChannel = 0
         for t in p.tracks {
             if forExport && t.kind == .audio { continue }

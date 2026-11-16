@@ -14,14 +14,16 @@ final class ArrangementState: ObservableObject {
 
     static let loopH: CGFloat = 14
     static let rulerH: CGFloat = 38
+    static let tagH: CGFloat = 22
     static let tempoH: CGFloat = 52
+    static var tempoTop: CGFloat { rulerH + tagH }
     static let minRowH: CGFloat = 44, maxRowH: CGFloat = 220, defaultRowH: CGFloat = 70
     /// Height of every track, adjustable with the slider above the track list or ⌘-scroll; remembered between launches.
     @Published var rowH: CGFloat = {
         let v = UserDefaults.standard.double(forKey: "trackHeight")
         return v > 0 ? min(ArrangementState.maxRowH, max(ArrangementState.minRowH, CGFloat(v))) : ArrangementState.defaultRowH
     }() { didSet { UserDefaults.standard.set(Double(rowH), forKey: "trackHeight") } }
-    var headerH: CGFloat { Self.rulerH + (showTempo ? Self.tempoH : 0) }
+    var headerH: CGFloat { Self.rulerH + Self.tagH + (showTempo ? Self.tempoH : 0) }
 }
 
 struct ArrangementView: View {
@@ -310,6 +312,9 @@ final class TimelineView: PlatformView {
         case loopEdge(start: Bool)
         case loopMove(grab: Double, len: Double)
         case tempoPoint(id: UUID?, grabDX: Double)
+        case tagNew(id: UUID, anchor: Double)
+        case tagMove(id: UUID, grab: Double)
+        case tagEdge(id: UUID, start: Bool)
         case clipMove(id: UUID, grabBeat: Double, origStart: Double, startRow: Int)
         case clipResize(id: UUID, origLen: Double)
         case audioMove(id: UUID, grabBeat: Double, origStart: Double)
@@ -424,6 +429,8 @@ final class TimelineView: PlatformView {
             ctx.fill(CGRect(x: lx0, y: headerH, width: lx1 - lx0, height: h - headerH))
         }
 
+        drawTagBackdrop(ctx)
+
         // Clips
         for (i, t) in p.tracks.enumerated() {
             let top = rowTop(i)
@@ -434,6 +441,7 @@ final class TimelineView: PlatformView {
         ctx.restoreGState()
 
         drawRuler(ctx, bpb: bpb)
+        drawTagLane(ctx)
         if state.showTempo { drawTempoLane(ctx) }
     }
 
@@ -538,6 +546,83 @@ final class TimelineView: PlatformView {
         ctx.fill(CGRect(x: 0, y: ArrangementState.rulerH - 1, width: w, height: 1))
     }
 
+    // MARK: Tag lane
+
+    private static let tagAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: NSColor(white: 0, alpha: 0.82)]
+    private static let tagEdgeGrab: CGFloat = 5
+
+    private func tagChip(_ t: Tag) -> CGRect {
+        let top = ArrangementState.rulerH + 2, hh = ArrangementState.tagH - 4
+        if t.isArea { return CGRect(x: x(t.start), y: top, width: max(8, x(t.end) - x(t.start)), height: hh) }
+        let wText = (t.name as NSString).size(withAttributes: Self.tagAttrs).width
+        return CGRect(x: x(t.start), y: top, width: min(wText + 14, 220), height: hh)
+    }
+
+    private func drawTagLane(_ ctx: CGContext) {
+        let w = bounds.width, top = ArrangementState.rulerH, hh = ArrangementState.tagH
+        ctx.saveGState()
+        ctx.clip(to: CGRect(x: 0, y: top, width: w, height: hh))
+        ctx.setFillColor(NSColor(red: 0.105, green: 0.11, blue: 0.125, alpha: 1).cgColor)
+        ctx.fill(CGRect(x: 0, y: top, width: w, height: hh))
+        let tags = project.tags
+        for (i, t) in tags.enumerated() {
+            let r = tagChip(t)
+            if r.maxX < 0 || r.minX > w { continue }
+            let col = Palette.nsColor(t.colorIndex)
+            let selected = t.id == session.selectedTagID
+            // a name never runs under the next tag
+            var textW = r.width - 12
+            if !t.isArea, i + 1 < tags.count { textW = min(textW, x(tags[i + 1].start) - r.minX - 14) }
+            ctx.setFillColor(col.withAlphaComponent(t.isArea ? 0.85 : 0.95).cgColor)
+            ctx.fill(r)
+            ctx.setFillColor(NSColor(white: 0, alpha: 0.35).cgColor)
+            ctx.fill(CGRect(x: r.minX, y: r.minY, width: 3, height: r.height))               // the mark itself: where the tag starts
+            if selected { ctx.setStrokeColor(NSColor.white.cgColor); ctx.setLineWidth(1.5); ctx.stroke(r.insetBy(dx: 0.75, dy: 0.75)) }
+            if textW > 8 {
+                ctx.saveGState()
+                ctx.clip(to: CGRect(x: r.minX + 6, y: r.minY, width: textW, height: r.height))
+                (t.name as NSString).draw(at: CGPoint(x: r.minX + 7, y: r.minY + 2), withAttributes: Self.tagAttrs)
+                ctx.restoreGState()
+            }
+        }
+        if tags.isEmpty {
+            ("Tags — click to mark a spot, drag to mark an area" as NSString).draw(at: CGPoint(x: max(80, x(0) + 80), y: top + 4),
+                withAttributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: Theme.ns.faint])
+        }
+        ctx.restoreGState()
+        ctx.setFillColor(Theme.ns.line.cgColor)
+        ctx.fill(CGRect(x: 0, y: top + hh - 1, width: w, height: 1))
+    }
+
+    /// A thin line through the tracks where each tag starts, and a faint wash over the area an area-tag covers.
+    private func drawTagBackdrop(_ ctx: CGContext) {
+        let h = bounds.height
+        for t in project.tags {
+            let x0 = x(t.start), x1 = x(t.end)
+            if x1 < 0 || x0 > bounds.width { continue }
+            let col = Palette.nsColor(t.colorIndex)
+            if t.isArea { ctx.setFillColor(col.withAlphaComponent(0.07).cgColor); ctx.fill(CGRect(x: x0, y: headerH, width: x1 - x0, height: h - headerH)) }
+            ctx.setFillColor(col.withAlphaComponent(t.id == session.selectedTagID ? 0.9 : 0.5).cgColor)
+            ctx.fill(CGRect(x: x0, y: headerH, width: 1, height: h - headerH))
+            if t.isArea { ctx.setFillColor(col.withAlphaComponent(0.3).cgColor); ctx.fill(CGRect(x: x1 - 1, y: headerH, width: 1, height: h - headerH)) }
+        }
+    }
+
+    private enum TagPart { case body, startEdge, endEdge }
+    private func tagHit(_ pt: NSPoint) -> (tag: Tag, part: TagPart)? {
+        guard pt.y >= ArrangementState.rulerH, pt.y < ArrangementState.tempoTop else { return nil }
+        for t in project.tags.reversed() {
+            let r = tagChip(t)
+            guard pt.x >= r.minX - 2, pt.x <= r.maxX + 2 else { continue }
+            if t.isArea, r.width > 16 {
+                if abs(pt.x - r.maxX) <= Self.tagEdgeGrab { return (t, .endEdge) }
+                if abs(pt.x - r.minX) <= Self.tagEdgeGrab { return (t, .startEdge) }
+            }
+            return (t, .body)
+        }
+        return nil
+    }
+
     // MARK: Tempo lane
 
     private func tempoRange() -> (Double, Double) {
@@ -548,17 +633,17 @@ final class TimelineView: PlatformView {
         return (max(10, lo), hi)
     }
     private func tempoY(_ bpm: Double, _ r: (Double, Double)) -> CGFloat {
-        let top = ArrangementState.rulerH + 8, bottom = headerH - 8
+        let top = ArrangementState.tempoTop + 8, bottom = headerH - 8
         return bottom - CGFloat((bpm - r.0) / (r.1 - r.0)) * (bottom - top)
     }
     private func tempoValue(atY y: CGFloat, _ r: (Double, Double)) -> Double {
-        let top = ArrangementState.rulerH + 8, bottom = headerH - 8
+        let top = ArrangementState.tempoTop + 8, bottom = headerH - 8
         return r.0 + Double((bottom - y) / (bottom - top)) * (r.1 - r.0)
     }
 
     private func drawTempoLane(_ ctx: CGContext) {
         let w = bounds.width
-        let top = ArrangementState.rulerH
+        let top = ArrangementState.tempoTop
         ctx.saveGState()
         ctx.clip(to: CGRect(x: 0, y: top, width: w, height: ArrangementState.tempoH))
         ctx.setFillColor(NSColor(red: 0.115, green: 0.12, blue: 0.135, alpha: 1).cgColor)
@@ -747,7 +832,11 @@ final class TimelineView: PlatformView {
     override func mouseMoved(with event: NSEvent) {
         let pt = convert(event.locationInWindow, from: nil)
         if pt.y < ArrangementState.loopH, loopEdgeHit(pt.x) != nil { NSCursor.resizeLeftRight.set(); return }
-        if state.showTempo, pt.y >= ArrangementState.rulerH, pt.y < headerH { (tempoHit(pt) != nil ? NSCursor.pointingHand : NSCursor.crosshair).set(); return }
+        if pt.y >= ArrangementState.rulerH, pt.y < ArrangementState.tempoTop {
+            if let h = tagHit(pt) { (h.part == .body ? NSCursor.pointingHand : NSCursor.resizeLeftRight).set() } else { NSCursor.crosshair.set() }
+            return
+        }
+        if state.showTempo, pt.y >= ArrangementState.tempoTop, pt.y < headerH { (tempoHit(pt) != nil ? NSCursor.pointingHand : NSCursor.crosshair).set(); return }
         if pt.y >= headerH, let h = clipHit(pt), h.edge { NSCursor.resizeLeftRight.set(); return }
         NSCursor.arrow.set()
     }
@@ -793,6 +882,27 @@ final class TimelineView: PlatformView {
             session.seek(to: event.modifierFlags.contains(.option) ? max(0, beat(pt.x)) : max(0, snap(beat(pt.x), 0.25)))
             return
         }
+        if pt.y < ArrangementState.tempoTop {
+            session.selectedAudioClipID = nil
+            if let hit = tagHit(pt) {
+                session.selectedTagID = hit.tag.id
+                if event.clickCount == 2 { session.renamingTagID = hit.tag.id; drag = .none; return }
+                switch hit.part {
+                case .startEdge: drag = .tagEdge(id: hit.tag.id, start: true)
+                case .endEdge: drag = .tagEdge(id: hit.tag.id, start: false)
+                case .body:
+                    session.seek(to: hit.tag.start)                    // clicking a tag takes the playhead there
+                    drag = .tagMove(id: hit.tag.id, grab: beat(pt.x) - hit.tag.start)
+                }
+            } else {
+                let b = max(0, event.modifierFlags.contains(.option) ? beat(pt.x) : snap(beat(pt.x), 0.25))
+                let id = session.addTag(start: b, ask: false)           // a click marks a spot; dragging on makes it an area
+                pushedUndo = true
+                drag = .tagNew(id: id, anchor: b)
+            }
+            return
+        }
+        session.selectedTagID = nil
         if state.showTempo, pt.y < headerH {
             frozenTempoRange = tempoRange()
             if let hit = tempoHit(pt) {
@@ -888,6 +998,25 @@ final class TimelineView: PlatformView {
             } else {
                 session.modify { $0.tempo = bpm }
             }
+        case .tagNew(let id, let anchor):
+            let b = max(0, noSnap ? beat(pt.x) : snap(beat(pt.x), 0.25))
+            let len = abs(b - anchor)
+            session.modify { p in
+                if let i = p.tags.firstIndex(where: { $0.id == id }) { p.tags[i].start = min(anchor, b); p.tags[i].length = len < 0.25 ? 0 : len }
+            }
+        case .tagMove(let id, let grab):
+            if abs(pt.x - mouseDownPoint.x) > 3 { beginChange() } else { return }
+            let s = max(0, noSnap ? beat(pt.x) - grab : snap(beat(pt.x) - grab, 0.25))
+            session.modify { p in if let i = p.tags.firstIndex(where: { $0.id == id }) { p.tags[i].start = s } }
+        case .tagEdge(let id, let isStart):
+            beginChange()
+            let b = max(0, noSnap ? beat(pt.x) : snap(beat(pt.x), 0.25))
+            session.modify { p in
+                guard let i = p.tags.firstIndex(where: { $0.id == id }) else { return }
+                let end = p.tags[i].end, start = p.tags[i].start
+                if isStart { let s = min(b, end - 0.25); p.tags[i].start = s; p.tags[i].length = end - s }
+                else { p.tags[i].length = max(0.25, b - start) }
+            }
         case .clipMove(let id, let grabBeat, let origStart, let startRow):
             let dx = beat(pt.x) - grabBeat
             if abs(pt.x - mouseDownPoint.x) > 3 || abs(pt.y - mouseDownPoint.y) > 3 { beginChange() } else { return }
@@ -916,6 +1045,11 @@ final class TimelineView: PlatformView {
         switch drag {
         case .loopNew, .loopEdge, .loopMove:
             if project.loopEnd - project.loopStart >= 1, !project.loopEnabled { session.modify { $0.loopEnabled = true } }
+        case .tagNew(let id, _):
+            session.resortTags()
+            session.renamingTagID = id                                // a new tag asks for its name
+        case .tagMove, .tagEdge:
+            session.resortTags()
         case .tempoPoint:
             session.modify { $0.tempoPoints.sort { $0.beat < $1.beat } }
             frozenTempoRange = nil
@@ -929,7 +1063,21 @@ final class TimelineView: PlatformView {
     func contextActions(at pt: CGPoint) -> [ContextAction] {
         var actions: [ContextAction] = []
         func item(_ title: String, _ action: @escaping () -> Void) { actions.append(ContextAction(title: title, destructive: title.hasPrefix("Delete") || title.hasPrefix("Clear"), run: action)) }
-        if state.showTempo, pt.y >= ArrangementState.rulerH, pt.y < headerH {
+        if pt.y >= ArrangementState.rulerH, pt.y < ArrangementState.tempoTop {
+            if let hit = tagHit(pt) {
+                let id = hit.tag.id
+                session.selectedTagID = id
+                item("Rename Tag…") { self.session.renamingTagID = id }
+                item("Next Colour") { self.session.cycleTagColor(id) }
+                if hit.tag.isArea { item("Loop This Area") { self.session.loopTag(id) } }
+                item("Delete Tag") { self.session.deleteTag(id) }
+            } else {
+                let b = max(0, snap(beat(pt.x), 0.25))
+                item("Add Tag Here") { self.session.addTag(start: b) }
+                if project.loopEnd > project.loopStart { item("Tag the Loop Area") { self.session.tagLoopArea() } }
+            }
+            if !project.tags.isEmpty { item("Clear All Tags") { self.session.clearTags() } }
+        } else if state.showTempo, pt.y >= ArrangementState.tempoTop, pt.y < headerH {
             frozenTempoRange = tempoRange()
             defer { frozenTempoRange = nil }
             if let hit = tempoHit(pt), let id = hit, let tp = project.tempoPoints.first(where: { $0.id == id }) {
@@ -970,6 +1118,7 @@ final class TimelineView: PlatformView {
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 51, 117:   // delete
+            if let tid = session.selectedTagID, session.selectedClipID == nil, session.selectedAudioClipID == nil { session.deleteTag(tid); return }
             if let aid = session.selectedAudioClipID, session.selectedClipID == nil { session.deleteAudioClip(aid); return }
             if let tid = session.selectedTrackID, let cid = session.selectedClipID { session.deleteClip(trackID: tid, clipID: cid) }
         default:

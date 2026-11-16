@@ -62,6 +62,15 @@ struct MacBandApp: App {
                 Button("Show Introduction") { session.startIntro() }
                 Button("Show the MacBand Folder") { NSWorkspace.shared.open(ProjectsFolder.ensure().url) }
             }
+            CommandMenu("Tags") {
+                Button("Add Tag at Playhead") { session.addTag(start: session.transport.beat) }
+                Button("Tag the Loop Area") { session.tagLoopArea() }.disabled(session.project.loopEnd <= session.project.loopStart)
+                Divider()
+                Button("Previous Tag") { session.jumpToTag(forward: false) }.keyboardShortcut("[", modifiers: [.command, .option])
+                Button("Next Tag") { session.jumpToTag(forward: true) }.keyboardShortcut("]", modifiers: [.command, .option])
+                Divider()
+                Button("Clear All Tags") { session.clearTags() }.disabled(session.project.tags.isEmpty)
+            }
             CommandMenu("View") {
                 Button("Visualizer Window") { VisualizerWindow.shared.show(session) }.keyboardShortcut("v", modifiers: [.command, .option])
                 Button("3D Stage Window") { JamWindow.shared.show(session) }.keyboardShortcut("j", modifiers: [.command, .option])
@@ -119,6 +128,7 @@ struct ContentView: View {
         .background(Theme.window)
         .background(WindowConfigurator())
         .overlay { if let m = session.busyMessage { BusyOverlay(message: m) } }
+        .modifier(TagRenameAlert())
         .overlay(alignment: .bottom) {
             if let t = session.toast {
                 Text(t).font(.system(size: 12, weight: .medium)).padding(.horizontal, 16).padding(.vertical, 9)

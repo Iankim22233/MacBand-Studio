@@ -52,6 +52,8 @@ final class Session: ObservableObject {
     @Published var selectedTuneNoteIDs: Set<UUID> = []
     @Published var tuneSplitTool = false
     @Published var tuneWorking: Set<UUID> = []          // audio clips being analyzed or re-rendered
+    @Published var selectedTagID: UUID?
+    @Published var renamingTagID: UUID?             // set to ask for a tag's name
     var recorder: AudioRecorder?
     var recordStartBeat = 0.0
     var tuneRenderGeneration: [UUID: Int] = [:]
