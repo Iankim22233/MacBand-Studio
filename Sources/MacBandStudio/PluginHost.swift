@@ -119,23 +119,61 @@ final class PluginLibrary: ObservableObject {
         return dir.appendingPathComponent("vst3-cache.json")
     }()
 
+    private var rescanQueued = false
+
     func rescan() {
-        guard !scanning else { return }
+        // A request that arrives while a scan runs (an install right after launch, say) is run afterwards, not dropped.
+        guard !scanning else { rescanQueued = true; return }
         scanning = true
         Task {
             var found: [LibraryPlugin] = []
-            found += scanAU()
+            let (au, auSkipped) = scanAU()
+            found += au
             let (vst3, skipped) = await scanVST3()
             found += vst3
             found.sort { ($0.spec.name.lowercased(), $0.spec.format.rawValue) < ($1.spec.name.lowercased(), $1.spec.format.rawValue) }
             self.plugins = found
-            self.skipped = skipped
+            self.skipped = (skipped + auSkipped).sorted()
             self.blocked = PluginLibrary.findQuarantined()
             self.scanning = false
+            if self.rescanQueued { self.rescanQueued = false; self.rescan() }
         }
     }
 
-    private func scanAU() -> [LibraryPlugin] {
+    /// Why a plugin bundle can't be used here, from the processor types it contains (nil if it should work).
+    nonisolated static func unusableReason(archs: [Int], hasAudioComponents: Bool) -> String? {
+        if !archs.contains(NSBundleExecutableArchitectureARM64) {
+            if archs.contains(NSBundleExecutableArchitectureX86_64) {
+                return "Intel-only, can't run in this Apple-silicon app — look for an Apple-silicon or universal version, or a VST3"
+            }
+            if !archs.isEmpty {
+                return "an old 32-bit / PowerPC plugin that macOS can no longer run — look for a newer 64-bit AU or VST3 version"
+            }
+        }
+        if !hasAudioComponents { return "an old-format Audio Unit that macOS doesn't register — look for a newer version" }
+        return nil
+    }
+
+    /// Audio Unit bundles sitting in the plugin folders that macOS never registered, with the reason.
+    nonisolated static func unregisteredAUs(registered: Set<String>) -> [String] {
+        let fm = FileManager.default
+        var out: [String] = []
+        for root in [PluginFolders.components, PluginFolders.systemRoot.appendingPathComponent("Components")] {
+            guard let items = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { continue }
+            for u in items where u.pathExtension.lowercased() == "component" {
+                if registered.contains(u.path) || PluginHost.isQuarantined(u.path) { continue }      // blocked ones are listed separately
+                let b = Bundle(url: u)
+                let archs = b?.executableArchitectures?.map { $0.intValue } ?? []
+                let comps = b?.object(forInfoDictionaryKey: "AudioComponents") as? [Any]
+                let why = unusableReason(archs: archs, hasAudioComponents: !(comps ?? []).isEmpty)
+                    ?? "macOS hasn't registered it — restart the Mac, or reinstall it"
+                out.append("\(u.lastPathComponent) (\(why))")
+            }
+        }
+        return out
+    }
+
+    private func scanAU() -> ([LibraryPlugin], [String]) {
         let mgr = AVAudioUnitComponentManager.shared()
         let all = mgr.components(matching: AudioComponentDescription())
         var out: [LibraryPlugin] = []
@@ -151,7 +189,10 @@ final class PluginLibrary: ObservableObject {
         }
         // Drop duplicate registrations
         var seen = Set<String>()
-        return out.filter { seen.insert($0.spec.key).inserted }
+        let unique = out.filter { seen.insert($0.spec.key).inserted }
+        // Every installed component macOS knows about, usable or not (effects of other kinds, say), so only the real strays are reported
+        let known = Set(all.compactMap { $0.componentURL?.path })
+        return (unique, PluginLibrary.unregisteredAUs(registered: known))
     }
 
     /// VST3 bundles are probed in a child process so a misbehaving plugin can't take the app down.

@@ -90,6 +90,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--graphfuzz") {
 if CommandLine.arguments.contains("--headertest") { exit(MainActor.assumeIsolated { HeaderClickTest.run() }) }
 if CommandLine.arguments.contains("--projecttest") { exit(MainActor.assumeIsolated { ProjectTest.run() }) }
 if CommandLine.arguments.contains("--autosavetest") { exit(MainActor.assumeIsolated { AutosaveTest.run() }) }
+if CommandLine.arguments.contains("--plugintest") { exit(MainActor.assumeIsolated { PluginTest.run() }) }
 if CommandLine.arguments.contains("--jamtest") { exit(MainActor.assumeIsolated { JamTest.run() }) }
 if let i = CommandLine.arguments.firstIndex(of: "--jamshots"), i + 1 < CommandLine.arguments.count {
     MainActor.assumeIsolated { JamTest.shots(CommandLine.arguments[i + 1]) }
