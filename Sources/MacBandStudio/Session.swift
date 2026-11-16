@@ -15,6 +15,14 @@ final class Transport: ObservableObject {
     @Published var isRecording = false
 }
 
+/// The count before recording starts: "4/4", "3/4", "2/4", "1/4" (one label per beat of the bar, counting down).
+enum Countdown {
+    static func labels(beats: Int) -> [String] {
+        let n = max(1, beats)
+        return (0..<n).map { "\(n - $0)/\(n)" }
+    }
+}
+
 enum BottomPanel: String, CaseIterable, Identifiable {
     case editor = "Editor", steps = "Step Sequencer", score = "Score", visual = "Visualizer", tune = "Vocal Tune", mixer = "Mixer"
     var id: String { rawValue }
@@ -53,6 +61,8 @@ final class Session: ObservableObject {
     @Published var tuneSplitTool = false
     @Published var tuneWorking: Set<UUID> = []          // audio clips being analyzed or re-rendered
     var recorder: AudioRecorder?
+    @Published var countdown: String?               // the count shown before recording starts ("4/4" … "1/4")
+    var countdownTask: Task<Void, Never>?
     var recordStartBeat = 0.0
     var tuneRenderGeneration: [UUID: Int] = [:]
     var tuneRenderWork: [UUID: DispatchWorkItem] = [:]
@@ -462,6 +472,7 @@ final class Session: ObservableObject {
     }
 
     func togglePlay() {
+        if countdownTask != nil { cancelCountdown(); return }
         if engine.isPlaying { stop() } else { play() }
     }
 
@@ -497,12 +508,17 @@ final class Session: ObservableObject {
     }
 
     func toggleRecord() {
+        if countdownTask != nil { cancelCountdown(); return }                      // pressing Record again during the count calls it off
         if recorder != nil { finishAudioRecording(); return }
         if transport.isRecording { finishRecording(); transport.isRecording = false; return }
-        if selectedTrack?.kind == .audio { startAudioRecording(); return }
         guard selectedTrack != nil else { return }
-        transport.isRecording = true
-        if !engine.isPlaying { play() }
+        let audio = selectedTrack?.kind == .audio
+        let begin = { [self] in
+            if audio { startAudioRecording(); return }
+            transport.isRecording = true
+            if !engine.isPlaying { play() }
+        }
+        if engine.isPlaying { begin() } else { startCountdown(then: begin) }       // a count of one bar before it starts, unless the song is already running
     }
 
     func toggleLoop() {

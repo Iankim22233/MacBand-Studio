@@ -123,6 +123,12 @@ clip, and the arrangement shows a strip of its frames with the waveform over it.
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
 Not yet: exporting the picture together with the bounce.
 
+## Count-in before recording
+
+Pressing **Record** with the song stopped first counts one bar down on screen (**4/4, 3/4, 2/4, 1/4**, one per beat at the song's tempo,
+with a click that is heard even when the metronome is off), then recording starts on the next downbeat. Press Record, Space or Esc
+during the count to call it off. If the song is already playing, recording starts right away. `--countdowntest` checks the sequence and timing.
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track
@@ -163,7 +169,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--countdowntest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
 `--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-video movie.mov [--demo-video-beat N]] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).

@@ -11,6 +11,23 @@ struct BusyOverlay: View {
     }
 }
 
+/// The big count shown before recording starts.
+struct CountdownOverlay: View {
+    let text: String
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(text).font(.system(size: 120, weight: .bold, design: .rounded)).monospacedDigit().foregroundStyle(.white)
+            Text("Recording starts…").font(.system(size: 14)).foregroundStyle(.white.opacity(0.75))
+        }
+        .padding(.horizontal, 54).padding(.vertical, 28)
+        .background(Rectangle().fill(Color.black.opacity(0.62)))
+        .overlay(Rectangle().stroke(Color.white.opacity(0.5), lineWidth: 1))
+        .id(text)
+        .transition(.scale(scale: 1.25).combined(with: .opacity))
+        .allowsHitTesting(false)
+    }
+}
+
 struct BottomPanelView: View {
     @EnvironmentObject var session: Session
     var body: some View {

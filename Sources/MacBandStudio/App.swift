@@ -119,6 +119,8 @@ struct ContentView: View {
         .background(Theme.window)
         .background(WindowConfigurator())
         .overlay { if let m = session.busyMessage { BusyOverlay(message: m) } }
+        .overlay { if let c = session.countdown { CountdownOverlay(text: c) } }
+        .animation(.easeOut(duration: 0.18), value: session.countdown)
         .overlay(alignment: .bottom) {
             if let t = session.toast {
                 Text(t).font(.system(size: 12, weight: .medium)).padding(.horizontal, 16).padding(.vertical, 9)
