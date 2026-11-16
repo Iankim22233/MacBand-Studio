@@ -335,6 +335,7 @@ final class AudioEngine {
             s.insertKeys = insertSpecs.map { $0.id }
             for (i, p) in insertSpecs.enumerated() where i < newFx.count { newFx[i].auAudioUnit.shouldBypassEffect = p.bypassed }
             s.loading = false
+            self.applySlideRange(s.id)
             self.startEngine()
             self.onGraphChanged?()
         }
@@ -519,7 +520,30 @@ final class AudioEngine {
         whileRenderPaused { reloadSequenceNow(project, metronome: metronome) }
     }
 
+    /// Plug-ins ignore the "bend range" message a MIDI file can carry and use their own setting (Vital: 2 semitones), so a slide
+    /// longer than that stopped short of its note. Plug-ins that list their pitch-bend range as a parameter are set to the range
+    /// the track's slides need, whenever the song is loaded for playback and when a plug-in finishes loading.
+    private var slideRanges: [UUID: Int] = [:]
+
+    static func bendRangeParameter(of au: AUAudioUnit) -> AUParameter? {
+        (au.parameterTree?.allParameters ?? []).first { p in
+            let n = p.displayName.lowercased()
+            return n.contains("bend") && n.contains("range")
+        }
+    }
+
+    private func applySlideRange(_ id: UUID) {
+        guard let semis = slideRanges[id], let au = strips[id]?.instrument?.auAudioUnit, let p = Self.bendRangeParameter(of: au) else { return }
+        let v = min(p.maxValue, max(p.minValue, AUValue(semis)))
+        if p.value != v { p.value = v }
+    }
+
     private func reloadSequenceNow(_ project: Project, metronome: Bool) {
+        slideRanges = [:]
+        for t in project.tracks where t.instrument.plugin != nil && t.clips.contains(where: { $0.notes.contains { $0.isSlide } }) {
+            slideRanges[t.id] = MIDIFile.effectiveBendRange(t)
+        }
+        for id in slideRanges.keys { applySlideRange(id) }
         let wasPlaying = sequencer.isPlaying
         let songPos = position
         sequencer.stop()

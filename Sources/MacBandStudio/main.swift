@@ -58,6 +58,7 @@ if CommandLine.arguments.contains("--audiotest") {
     MainActor.assumeIsolated { TuneTest.sessionTest() }
     exit(0)
 }
+if CommandLine.arguments.contains("--slideplugintest") { exit(MainActor.assumeIsolated { SlidePluginTest.run() }) }
 if CommandLine.arguments.contains("--tunetest") {
     MainActor.assumeIsolated { TuneTest.run() }
     exit(0)
