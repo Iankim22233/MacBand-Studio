@@ -58,6 +58,7 @@ if CommandLine.arguments.contains("--audiotest") {
     MainActor.assumeIsolated { TuneTest.sessionTest() }
     exit(0)
 }
+if CommandLine.arguments.contains("--slideplugintest") { exit(MainActor.assumeIsolated { SlidePluginTest.run() }) }
 if CommandLine.arguments.contains("--tunetest") {
     MainActor.assumeIsolated { TuneTest.run() }
     exit(0)
@@ -76,11 +77,25 @@ if let i = CommandLine.arguments.firstIndex(of: "--introshots"), i + 1 < Command
     exit(0)
 }
 if CommandLine.arguments.contains("--bandtest") { exit(MainActor.assumeIsolated { GarageBandTest.run() }) }
+if CommandLine.arguments.contains("--mastertest") { exit(MainActor.assumeIsolated { MasterTest.run() }) }
 if CommandLine.arguments.contains("--wavebench") { MainActor.assumeIsolated { WaveBench.run() }; exit(0) }
+if let i = CommandLine.arguments.firstIndex(of: "--graphfuzz") {
+    let rest = CommandLine.arguments.dropFirst(i + 1).filter { !$0.hasPrefix("--") }
+    let rounds = rest.compactMap { Int($0) }.first ?? 200
+    let files = rest.filter { Int($0) == nil }
+    if files.count >= 2 { MainActor.assumeIsolated { GraphFuzzTest.loadCycles(Array(files), rounds: rounds) } }
+    else { MainActor.assumeIsolated { GraphFuzzTest.run(files.first, rounds: rounds) } }
+    exit(0)
+}
 if CommandLine.arguments.contains("--headertest") { exit(MainActor.assumeIsolated { HeaderClickTest.run() }) }
 if CommandLine.arguments.contains("--projecttest") { exit(MainActor.assumeIsolated { ProjectTest.run() }) }
 if CommandLine.arguments.contains("--autosavetest") { exit(MainActor.assumeIsolated { AutosaveTest.run() }) }
 if CommandLine.arguments.contains("--plugintest") { exit(MainActor.assumeIsolated { PluginTest.run() }) }
+if CommandLine.arguments.contains("--jamtest") { exit(MainActor.assumeIsolated { JamTest.run() }) }
+if let i = CommandLine.arguments.firstIndex(of: "--jamshots"), i + 1 < CommandLine.arguments.count {
+    MainActor.assumeIsolated { JamTest.shots(CommandLine.arguments[i + 1]) }
+    exit(0)
+}
 if CommandLine.arguments.contains("--visualtest") { exit(MainActor.assumeIsolated { VisualizerTest.run() }) }
 if CommandLine.arguments.contains("--soundtest-after") { exit(MainActor.assumeIsolated { SoundTest.afterOffline() }) }
 if CommandLine.arguments.contains("--balancetest") { exit(MainActor.assumeIsolated { BalanceTest.run() }) }

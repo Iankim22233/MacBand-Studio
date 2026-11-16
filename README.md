@@ -74,6 +74,8 @@ Shows the selected pattern as notation and edits the same notes as the piano rol
 The **Tools** menu works on the selected notes (or the whole pattern): quantize (100% / 50% / with lengths), swing,
 humanize, legato, reverse, transpose, fit to the scale, add major/minor/seventh chords or octaves, arpeggiate, louder/softer.
 
+**Slides:** a slide note glides the note that is sounding to its own pitch. Select two or more notes (a melody, one note after another) and press **Slide** (or **S**): the first becomes one long note and the rest become slide notes under it, so the pitch glides from note to note. Press it again to take the slide apart. A slide note has a grip at each end: drag the right end to make the glide longer (slower) or shorter (faster), drag the left end to change when it begins. The slide next to it follows, so the chain stays connected (one glide gets slower as the next gets faster). With nothing selected, Slide just decides whether newly drawn notes are slide notes.
+
 ## Visualizer
 
 The **Visualizer** tab (or **View ▸ Visualizer Window**, ⌥⌘V, which can go full screen) has two kinds of picture:
@@ -90,6 +92,28 @@ The **Visualizer** tab (or **View ▸ Visualizer Window**, ⌥⌘V, which can go
 * **Spectrum shapes** driven by the real audio output: Bars, Mirror, Mountains and Dots, in Accent, Rainbow, Fire
   or Ice colours.
 
+### 3D Stage
+
+**View ▸ 3D Stage Window** (⌥⌘J, or the **3D Stage** button in the Visualizer tab) opens a 3D band in a window of its own, in
+the spirit of midis2jam2: every track with notes gets an instrument on a stage, chosen from its sound, and it plays along.
+
+* **Piano, organ, mallets**: the keys go down (and glow in the track's colour) as notes sound, with the coming notes falling
+  towards them.
+* **Guitar, bass, violin family**: fingers appear on the frets for each sounding note (a chord goes on separate strings), the
+  string buzzes, and violins and cellos are bowed (the bow sweeps across the strings while it plays).
+* **Trumpet, trombone, sax**: valves go down by pitch, the bell glows and dots drift out of it. **Flute**: keys close by pitch.
+* **Synths and everything else**: a row of light pillars that rise with the notes.
+* **Drums**: the kick, snare, toms, hi-hat, crash, ride and a percussion pad are hit by the right MIDI notes, with sticks.
+* **Spotlight**: when one or two instruments are playing (a solo or a duet), the house lights go down and a spotlight picks
+  them out. Drums behind them don't count, and drums playing alone get the light too (a drum solo). The light comes on only after
+  the same instruments have played for a full measure, and goes off as soon as someone else joins (or everyone stops). Muted
+  tracks are silent on stage, and **Solo** on a track makes it the soloist. An instrument counts as playing for a moment after
+  each note, so the light doesn't flicker between notes.
+
+Drag to orbit, scroll to zoom, double-click to reset the camera; the window can go full screen. Plug-in and GarageBand sounds
+are told apart by their name (a track called "Trumpet" is a trumpet). `--jamtest` checks the instruments and the spotlight rule,
+and `--jamshots <dir>` renders pictures of the stage.
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track
@@ -101,6 +125,14 @@ too far. The master strip has a **Bass** control (a low shelf) for taste. Track 
 - The first time it starts, MacBand makes a **MacBand** folder beside your GarageBand folder (`~/Music/MacBand`), puts a small *Welcome to MacBand* song in it, and plays an animated introduction (replay it any time from **Help ▸ Show Introduction**).
 - **File ▸ Open…** (⌘O) shows a chooser with the projects in that folder, recent ones, and others Spotlight finds. **Open File…** (⌥⌘O) is the normal file dialog.
 - **GarageBand import:** on that first start every `.band` project in `~/Music/GarageBand` is converted into the MacBand folder, and a message tells you what happened. Each audio stem becomes an audio track, and the tempo, time signature and key come across. GarageBand keeps its notes and instruments in a private file nothing else can read, so those can't be imported. Your GarageBand projects are never changed. Later, use **File ▸ Import ▸ Band Project…** or drop a `.band` onto the window.
+
+## Master track (effects on the whole mix)
+
+Click **Master** under the track list (or **FX** on the Master strip in the Mixer) to open the Master panel in the Inspector. **Add Effect to
+Master** puts an Audio Unit or VST3 effect on everything you hear, so one reverb, compressor or EQ covers the whole song instead of one
+instrument. Effects run in the order shown (top to bottom), then through the limiter that protects your speakers; each can be bypassed
+(power button), opened (sliders button) or removed (×). They are saved with the project, undo/redo works, and exports include them.
+The Master panel also has the master volume and bass. The level meter and the Visualizer now listen after the master effects.
 
 ## Auto Save
 
@@ -122,7 +154,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
 `--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).
