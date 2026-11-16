@@ -762,7 +762,8 @@ final class Session: ObservableObject {
             case "mid", "midi": importMIDI(url: u)
             case "band": importGarageBandProject(url: u)
             case "macband": if project.tracks.isEmpty || !isDirty { openProject(url: u) } else { importBandProject(url: u) }
-            case "wav", "wave", "aif", "aiff", "mp3", "m4a", "caf", "flac", "aac", "ogg", "mp4": importAudio(url: u)
+            case "wav", "wave", "aif", "aiff", "mp3", "m4a", "caf", "flac", "aac", "ogg": importAudio(url: u)
+            case "mp4", "mov", "m4v": importMedia(url: u)
             case "component", "vst3", "vst": installPlugins([u])
             default: break
             }

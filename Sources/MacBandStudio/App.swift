@@ -28,6 +28,7 @@ struct MacBandApp: App {
                 Menu("Import") {
                     Button("MIDI File…") { session.importMIDI() }.keyboardShortcut("i")
                     Button("Audio File…") { session.importAudio() }.keyboardShortcut("i", modifiers: [.command, .shift])
+                    Button("Video File…") { session.importVideo() }.keyboardShortcut("i", modifiers: [.command, .option])
                     Button("Band Project…") { session.importBandProject() }
                 }
                 Menu("Export") {
@@ -64,6 +65,7 @@ struct MacBandApp: App {
             CommandMenu("View") {
                 Button("Visualizer Window") { VisualizerWindow.shared.show(session) }.keyboardShortcut("v", modifiers: [.command, .option])
                 Button("3D Stage Window") { JamWindow.shared.show(session) }.keyboardShortcut("j", modifiers: [.command, .option])
+                Button("Video Window") { VideoWindow.shared.show(session) }.keyboardShortcut("m", modifiers: [.command, .option])
                 Divider()
                 ButtonColorMenu()
             }

@@ -197,6 +197,9 @@ struct AudioClip: Codable, Identifiable, Hashable {
     var length: Double              // seconds shown/played
     var peaks = Data()              // 100 values per second (0…255)
     var tune: TuneData? = nil
+    /// A video clip: the picture that goes with this audio (a copy in the managed folder). The clip's sound is the video's own audio.
+    var video: String? = nil
+    var hasVideo: Bool { video != nil }
 }
 
 enum Mixer {

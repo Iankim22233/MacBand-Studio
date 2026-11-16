@@ -83,7 +83,7 @@ extension Session {
     }
 
     func saveAudioAssets(for projectURL: URL) {
-        let files = Set(project.tracks.flatMap { $0.audioClips.map { $0.file } })
+        let files = Set(project.tracks.flatMap { $0.audioClips.flatMap { [$0.file] + ($0.video.map { [$0] } ?? []) } })
         guard !files.isEmpty else { return }
         let dir = assetsFolder(for: projectURL)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -99,6 +99,11 @@ extension Session {
         let dir = projectURL.map { assetsFolder(for: $0) }
         var missing: [String] = []
         for c in tracks.flatMap({ $0.audioClips }) {
+            if let v = c.video, !FileManager.default.fileExists(atPath: AudioStore.url(v).path) {
+                if let d = dir, FileManager.default.fileExists(atPath: d.appendingPathComponent(v).path) {
+                    try? FileManager.default.copyItem(at: d.appendingPathComponent(v), to: AudioStore.url(v))
+                } else { missing.append(c.name + " (video)") }
+            }
             if !FileManager.default.fileExists(atPath: AudioStore.url(c.file).path) {
                 if let d = dir, FileManager.default.fileExists(atPath: d.appendingPathComponent(c.file).path) {
                     try? FileManager.default.copyItem(at: d.appendingPathComponent(c.file), to: AudioStore.url(c.file))
