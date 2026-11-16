@@ -123,6 +123,18 @@ clip, and the arrangement shows a strip of its frames with the waveform over it.
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
 Not yet: exporting the picture together with the bounce.
 
+## Detecting the tempo of what you play
+
+Play without worrying about the click: **Record ▸ Detect the Tempo of What I Play** (on) works out the tempo of a take when you stop recording. It
+looks at where the notes fall, not at how fast the fastest ones are, so eighth notes, triplets and sixteenths don't throw it off: a note on the beat
+counts most, one on an eighth, triplet or sixteenth place counts less (but counts), one on none of them counts against that tempo, and a tempo
+whose bars repeat scores higher. A bar of quarters with a triplet run in it reads as the quarter-note tempo, not as a tempo made of the triplets.
+If the song has nothing else in it, the song is set to that tempo and the notes are moved onto its beat grid (one undo step), so Quantize,
+Swing and the grid then line up with how you played. If other tracks or tempo changes exist, the song is left alone and the tempo is just reported.
+Evenly spaced notes fit a tempo and its double equally well, so the message also offers the other reading ("or 76").
+**Tools ▸ Timing ▸ Detect Tempo of These Notes** (or **Record ▸ Detect Tempo of the Selected Notes**) does the same for notes already in a pattern.
+It needs at least 6 notes spread over 2 seconds; MIDI recording only (not audio). `--tempotest` checks it.
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track
@@ -163,7 +175,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--tempotest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
 `--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-video movie.mov [--demo-video-beat N]] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).

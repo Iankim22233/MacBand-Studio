@@ -52,6 +52,9 @@ final class Session: ObservableObject {
     @Published var selectedTuneNoteIDs: Set<UUID> = []
     @Published var tuneSplitTool = false
     @Published var tuneWorking: Set<UUID> = []          // audio clips being analyzed or re-rendered
+    /// Hear the tempo of what is played while recording and set the song to it (see `detectTempo`).
+    @Published var detectTempoOnRecord = UserDefaults.standard.bool(forKey: "detectTempoOnRecord") { didSet { UserDefaults.standard.set(detectTempoOnRecord, forKey: "detectTempoOnRecord") } }
+    var recordedNoteIDs: [UUID] = []                // the notes of the take being recorded
     var recorder: AudioRecorder?
     var recordStartBeat = 0.0
     var tuneRenderGeneration: [UUID: Int] = [:]
@@ -502,6 +505,7 @@ final class Session: ObservableObject {
         if selectedTrack?.kind == .audio { startAudioRecording(); return }
         guard selectedTrack != nil else { return }
         transport.isRecording = true
+        recordedNoteIDs = []
         if !engine.isPlaying { play() }
     }
 
@@ -563,6 +567,7 @@ final class Session: ObservableObject {
         modify { p in
             let cs = p.tracks[ti].clips[idx].start
             let n = Note(pitch: pitch, start: start - cs, length: max(0.0625, end - start), velocity: vel)
+            self.recordedNoteIDs.append(n.id)
             p.tracks[ti].clips[idx].notes.append(n)
             p.tracks[ti].clips[idx].fitLengthToNotes(minBeats: bar, quantum: bar)
         }
@@ -575,6 +580,7 @@ final class Session: ObservableObject {
         for (pitch, on) in recording { addRecordedNote(trackID: t.id, pitch: pitch, start: on.beat, end: now, vel: on.vel) }
         recording.removeAll()
         transport.isRecording = false
+        if detectTempoOnRecord { detectTempo(of: Set(recordedNoteIDs)) }
     }
 
 
