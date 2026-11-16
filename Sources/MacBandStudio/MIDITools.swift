@@ -347,6 +347,7 @@ struct RollToolsMenu: View {
             Button("Humanize") { run { MIDITools.humanize(&$0, ids: $1, timing: 0.03, velocity: 8) } }
             Button("Legato") { run { MIDITools.legato(&$0, ids: $1) } }
             Button("Reverse") { run { MIDITools.reverse(&$0, ids: $1) } }
+            Button("Detect Tempo of These Notes") { session.detectTempo(of: session.selectedNoteIDs.isEmpty ? nil : session.selectedNoteIDs) }
         }
     }
 

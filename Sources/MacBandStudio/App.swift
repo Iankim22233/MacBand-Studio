@@ -62,6 +62,11 @@ struct MacBandApp: App {
                 Button("Show Introduction") { session.startIntro() }
                 Button("Show the MacBand Folder") { NSWorkspace.shared.open(ProjectsFolder.ensure().url) }
             }
+            CommandMenu("Record") {
+                Button("Record") { session.toggleRecord() }.keyboardShortcut("r", modifiers: [.command, .option])
+                Toggle("Detect the Tempo of What I Play", isOn: Binding(get: { session.detectTempoOnRecord }, set: { session.detectTempoOnRecord = $0 }))
+                Button("Detect Tempo of the Selected Notes") { session.detectTempo(of: session.selectedNoteIDs.isEmpty ? nil : session.selectedNoteIDs) }
+            }
             CommandMenu("View") {
                 Button("Visualizer Window") { VisualizerWindow.shared.show(session) }.keyboardShortcut("v", modifiers: [.command, .option])
                 Button("3D Stage Window") { JamWindow.shared.show(session) }.keyboardShortcut("j", modifiers: [.command, .option])
