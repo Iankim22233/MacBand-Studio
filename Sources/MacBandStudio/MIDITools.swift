@@ -183,6 +183,25 @@ enum MIDIToolsTest {
         var r = [N(60, 0, 1), N(62, 1, 1), N(64, 2, 2)]
         MIDITools.reverse(&r, ids: nil)
         check(r.first { $0.pitch == 64 }!.start == 0 && r.first { $0.pitch == 60 }!.start == 3, "reverse mirrors the notes in time")
+        // Slides reach their notes even when they travel further than the track's slide range.
+        do {
+            var tr = Track(name: "t", colorIndex: 0); tr.bendRange = 2
+            var cl = Clip(name: "c", start: 0, length: 8)
+            cl.notes = [Note(pitch: 60, start: 0, length: 4), Note(pitch: 67, start: 1, length: 1, isSlide: true), Note(pitch: 84, start: 2, length: 1, isSlide: true)]
+            tr.clips = [cl]
+            let range = MIDIFile.effectiveBendRange(tr)
+            check(range == 24, "a slide of 24 semitones widens a range of 2 to 24 (got \(range))")
+            let evs = MIDIFile.trackEvents(tr, channel: 0, forExport: false)
+            let bends = evs.filter { $0.bytes.first == 0xE0 }.sorted { $0.tick < $1.tick }
+            func semis(_ e: MIDIFile.Ev) -> Double { Double((Int(e.bytes[2]) << 7 | Int(e.bytes[1])) - 8192) / 8192 * Double(range) }
+            let atEnd = bends.last { $0.tick <= MIDIFile.ticks(3) }
+            check(atEnd != nil && abs(semis(atEnd!) - 24) < 0.05, "the last slide ends on its note (+24 semitones)")
+            let rpn = evs.first { $0.bytes.count == 3 && $0.bytes[1] == 6 }
+            check(rpn?.bytes[2] == 24, "the bend range sent to the instrument is the widened one")
+            tr.bendRange = 12
+            check(MIDIFile.effectiveBendRange(tr) == 24 && { var t2 = tr; t2.clips[0].notes.removeLast(); return MIDIFile.effectiveBendRange(t2) == 12 }(), "the range is only widened when a slide needs it")
+        }
+
         print(fails == 0 ? "ALL MIDI TOOL CHECKS PASSED" : "\(fails) MIDI TOOL CHECK(S) FAILED")
         return fails == 0 ? 0 : 1
     }
