@@ -74,6 +74,8 @@ Shows the selected pattern as notation and edits the same notes as the piano rol
 The **Tools** menu works on the selected notes (or the whole pattern): quantize (100% / 50% / with lengths), swing,
 humanize, legato, reverse, transpose, fit to the scale, add major/minor/seventh chords or octaves, arpeggiate, louder/softer.
 
+**Slides:** a slide note glides the note that is sounding to its own pitch. Select two or more notes (a melody, one note after another) and press **Slide** (or **S**): the first becomes one long note and the rest become slide notes under it, so the pitch glides from note to note. Press it again to take the slide apart. A slide note has a grip at each end: drag the right end to make the glide longer (slower) or shorter (faster), drag the left end to change when it begins. The slide next to it follows, so the chain stays connected (one glide gets slower as the next gets faster). With nothing selected, Slide just decides whether newly drawn notes are slide notes.
+
 ## Visualizer
 
 The **Visualizer** tab (or **View ▸ Visualizer Window**, ⌥⌘V, which can go full screen) has two kinds of picture:
