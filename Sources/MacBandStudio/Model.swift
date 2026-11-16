@@ -229,6 +229,7 @@ struct Project: Codable {
     var scale: ScaleKind = .chromatic
     var masterVolume: Double = 0.8
     var masterBass: Double = 0              // dB, low shelf on the whole mix (negative = less bass)
+    var masterInserts: [PluginSpec] = []    // effects on the whole mix (the master track)
     var tracks: [Track] = []
 
     var beatsPerBar: Double { Double(timeSigNum) * 4.0 / Double(timeSigDen) }
@@ -251,6 +252,7 @@ struct Project: Codable {
         scale = try c.decodeIfPresent(ScaleKind.self, forKey: .scale) ?? .chromatic
         masterVolume = try c.decodeIfPresent(Double.self, forKey: .masterVolume) ?? 0.8
         masterBass = try c.decodeIfPresent(Double.self, forKey: .masterBass) ?? 0
+        masterInserts = try c.decodeIfPresent([PluginSpec].self, forKey: .masterInserts) ?? []
         tracks = try c.decodeIfPresent([Track].self, forKey: .tracks) ?? []
     }
 

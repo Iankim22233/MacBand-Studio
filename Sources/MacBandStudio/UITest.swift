@@ -242,6 +242,58 @@ import Foundation
         key(roll, "s", code: 1)
         check(notes().first { $0.id == firstID }?.isSlide == true, "S toggles slide on the selection")
         key(roll, "s", code: 1)
+        // several selected notes: the Slide button / S link them into one slide
+        do {
+            let base = notes().filter { $0.pitch >= 60 }.map { $0.start }.max() ?? 0
+            let startAt = (base + 8).rounded(.up)
+            s.selectedNoteIDs = []
+            let before = notes().count
+            for (k, pitch) in [67, 69, 71, 72].enumerated() { click(roll, CGPoint(x: rx(startAt + Double(k)) + 3, y: ry(pitch)), flags: .command) }
+            let made = notes().suffix(4)
+            check(notes().count == before + 4 && made.allSatisfy { !$0.isSlide }, "four notes in a row are drawn")
+            s.selectedNoteIDs = Set(made.map { $0.id })
+            s.slideAction()                                              // what the Slide button does
+            let linkedNotes = notes().filter { n in made.contains { $0.id == n.id } }.sorted { $0.start < $1.start }
+            check(!linkedNotes[0].isSlide && linkedNotes[1...].allSatisfy { $0.isSlide }, "the Slide button links the selected notes: one note and three slides")
+            check(linkedNotes[0].length >= 3.9, "…the first one stretched under the whole run (\(linkedNotes[0].length) beats)")
+            s.selectedNoteIDs = Set(made.map { $0.id })
+            key(roll, "s", code: 1)                                       // S does the same thing: unlink
+            check(notes().filter { n in made.contains { $0.id == n.id } }.allSatisfy { !$0.isSlide }, "pressing it again (or S) unlinks them")
+            s.undo(); s.undo()                                            // the unlink, the link
+            for n in made { s.selectedNoteIDs = [n.id] }
+            s.selectedNoteIDs = Set(made.map { $0.id }); key(roll, "\u{7F}", code: 51)       // tidy up: delete the four notes
+        }
+        // dragging the slides: their ends change how fast the pitch glides, and the neighbouring slide follows
+        do {
+            let at = ((notes().map { $0.end }.max() ?? 0) + 4).rounded(.up)
+            let before = notes().count
+            for (k, pitch) in [60, 64, 67].enumerated() { click(roll, CGPoint(x: rx(at + Double(k)) + 3, y: ry(pitch)), flags: .command) }
+            let trio = Array(notes().suffix(3))
+            check(trio.count == 3 && notes().count == before + 3, "three notes drawn for the drag test")
+            s.selectedNoteIDs = Set(trio.map { $0.id })
+            s.slideAction()
+            func now(_ i: Int) -> Note { notes().first { $0.id == trio[i].id }! }
+            check(!now(0).isSlide && now(1).isSlide && now(2).isSlide && abs(now(0).length - 3) < 0.6, "linked: a long note with two slides under it")
+            // a click on a slide (which lies over the long note) picks the slide, not the long note
+            s.selectedNoteIDs = []
+            click(roll, CGPoint(x: rx(at + 1) + 20, y: ry(64)))
+            check(s.selectedNoteIDs == [trio[1].id], "clicking a slide picks the slide, not the long note under it")
+            let s1End = now(1).end, s2End = now(2).end, s1Len = now(1).length
+            // drag the end of the first slide to the right: it glides more slowly, the second one faster
+            drag(roll, from: CGPoint(x: rx(s1End) - 2, y: ry(64)), to: CGPoint(x: rx(s1End + 0.5) - 2, y: ry(64)))
+            check(abs(now(1).length - (s1Len + 0.5)) < 0.3, "dragging a slide's end makes it longer (slower) (\(s1Len) → \(now(1).length))")
+            check(abs(now(2).start - now(1).end) < 1e-6 && abs(now(2).end - s2End) < 1e-6, "…and the next slide starts where it ends, still ending where it did")
+            // drag the start of the second slide back to the left
+            let st = now(2).start
+            drag(roll, from: CGPoint(x: rx(st) + 2, y: ry(67)), to: CGPoint(x: rx(st - 0.5) + 2, y: ry(67)))
+            check(abs(now(2).start - (st - 0.5)) < 0.3 && abs(now(2).end - s2End) < 1e-6, "dragging a slide's start moves when it begins, not when it ends")
+            check(abs(now(1).end - now(2).start) < 1e-6, "…and the slide before it ends where it begins")
+            // a slide can't start before the note it glides
+            drag(roll, from: CGPoint(x: rx(now(1).start) + 2, y: ry(64)), to: CGPoint(x: rx(at - 2), y: ry(64)))
+            check(now(1).start >= now(0).start - 1e-6, "a slide can't be dragged to start before its long note (starts at \(now(1).start), note at \(now(0).start))")
+            s.undo(); s.undo(); s.undo(); s.undo()
+            s.selectedNoteIDs = Set(trio.map { $0.id }); key(roll, "\u{7F}", code: 51)
+        }
         // undo
         let before = notes().count
         s.selectedNoteIDs = [firstID]

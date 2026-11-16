@@ -57,6 +57,20 @@ enum MIDIFile {
         return min(16383, max(0, v))
     }
 
+    /// The bend range a track's slides are played with: the track's own setting, widened (up to 48 semitones) when a slide
+    /// travels further than that, so every slide reaches the note it points at instead of stopping at the range.
+    static func effectiveBendRange(_ track: Track) -> Int {
+        var need = 0
+        for clip in track.clips {
+            let normals = clip.notes.filter { !$0.isSlide }
+            for n in clip.notes where n.isSlide {
+                guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
+                need = max(need, abs(n.pitch - src.pitch))
+            }
+        }
+        return min(48, max(track.bendRange, need))
+    }
+
     /// Notes / pitch bends / volume for one track as MIDI events on `channel`.
     static func trackEvents(_ track: Track, channel: Int, forExport: Bool) -> [Ev] {
         var evs: [Ev] = []
@@ -70,9 +84,10 @@ enum MIDIFile {
             }
             add(0, 0, [0xB0 | ch, 10, UInt8(min(127, max(0, Int(64 + track.pan * 63))))])
         }
+        let range = effectiveBendRange(track)
         if hasSlides {
             // RPN 0: pitch-bend sensitivity
-            for (cc, v) in [(101, 0), (100, 0), (6, track.bendRange), (38, 0), (101, 127), (100, 127)] {
+            for (cc, v) in [(101, 0), (100, 0), (6, range), (38, 0), (101, 127), (100, 127)] {
                 add(0, 0, [0xB0 | ch, UInt8(cc), UInt8(v)])
             }
         }
@@ -110,13 +125,13 @@ enum MIDIFile {
                 guard let src = sourceOf[sid] else { continue }
                 var cur = 0.0
                 for s in slides.sorted(by: { $0.start < $1.start }) {
-                    let target = min(Double(track.bendRange), max(-Double(track.bendRange), Double(s.pitch - src.pitch)))
+                    let target = min(Double(range), max(-Double(range), Double(s.pitch - src.pitch)))
                     let t0 = base + s.start
                     let steps = max(6, Int((s.length * 12).rounded()))
                     for i in 0...steps {
                         let f = Double(i) / Double(steps)
                         let semis = cur + (target - cur) * f
-                        add(ticks(t0 + s.length * f), 0, [0xE0 | ch, UInt8(bendValue(semis, range: track.bendRange) & 127), UInt8((bendValue(semis, range: track.bendRange) >> 7) & 127)])
+                        add(ticks(t0 + s.length * f), 0, [0xE0 | ch, UInt8(bendValue(semis, range: range) & 127), UInt8((bendValue(semis, range: range) >> 7) & 127)])
                     }
                     cur = target
                 }
