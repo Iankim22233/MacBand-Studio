@@ -146,6 +146,10 @@ struct MasterInspector: View {
             SectionLabel(text: "Mix")
             LabeledSlider(label: "Volume", value: Binding(get: { session.project.masterVolume }, set: { v in session.modify { $0.masterVolume = v } }), range: 0...1,
                           display: String(format: "%.0f%%", session.project.masterVolume / 0.8 * 100), onBegin: { session.pushUndo() })
+            LabeledSlider(label: "Tune", value: Binding(get: { session.project.masterCents }, set: { v in session.modify { $0.masterCents = v.rounded() } }), range: -100...100,
+                          display: centsText(session.project.masterCents), onBegin: { session.pushUndo() })
+                .help("Fine tuning of the whole mix in cents (hundredths of a semitone). −32 cents is the same as A = 432 Hz. Double-click the number to put it back to 0.")
+                .overlay(alignment: .trailing) { Color.clear.frame(width: 58, height: 20).contentShape(Rectangle()).onTapGesture(count: 2) { session.edit { $0.masterCents = 0 } } }
             LabeledSlider(label: "Bass", value: Binding(get: { session.project.masterBass }, set: { v in session.modify { $0.masterBass = (v * 2).rounded() / 2 } }), range: -12...6,
                           display: String(format: "%+.1f dB", session.project.masterBass), onBegin: { session.pushUndo() })
                 .help("Less or more bass on the whole mix: a low shelf below about 140 Hz")
@@ -236,6 +240,10 @@ struct TrackInspector: View {
             LabeledSlider(label: "Trim", value: Binding(get: { track.trim }, set: { v in session.modify { p in if let i = p.tracks.firstIndex(where: { $0.id == track.id }) { p.tracks[i].trim = (v * 2).rounded() / 2 } } } ), range: -24...24,
                           display: String(format: "%+.1f dB", track.trim), onBegin: { session.pushUndo() })
                 .help("Extra gain on top of the fader, in dB. Auto Balance sets it so tracks are equally loud; the fader alone can't lift a very quiet sound.")
+            LabeledSlider(label: "Tune", value: Binding(get: { track.tuneCents }, set: { v in session.modify { p in if let i = p.tracks.firstIndex(where: { $0.id == track.id }) { p.tracks[i].tuneCents = v.rounded() } } }), range: -100...100,
+                          display: centsText(track.tuneCents), onBegin: { session.pushUndo() })
+                .help("Fine tuning of this instrument in cents (hundredths of a semitone), up or down. Double-click the number to put it back to 0.")
+                .overlay(alignment: .trailing) { Color.clear.frame(width: 58, height: 20).contentShape(Rectangle()).onTapGesture(count: 2) { session.edit { p in if let i = p.tracks.firstIndex(where: { $0.id == track.id }) { p.tracks[i].tuneCents = 0 } } } }
             VistaStepper(value: Binding(get: { Double(track.bendRange) }, set: { v in update { $0.bendRange = Int(v) } }), range: 1...48) {
                 HStack {
                     Text("Slide range").font(.system(size: 12)).foregroundStyle(Theme.dim)
@@ -247,6 +255,9 @@ struct TrackInspector: View {
         }
     }
 }
+
+/// "+12 ¢" for a fine-tuning amount in cents.
+func centsText(_ c: Double) -> String { abs(c) < 0.5 ? "0 ¢" : String(format: "%+.0f ¢", c) }
 
 struct LabeledSlider: View {
     let label: String

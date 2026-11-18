@@ -15,6 +15,7 @@ final class TrackStrip {
     var effects: [AVAudioUnit] = []
     let mixer = AVAudioMixerNode()
     var instrumentKey = ""
+    var detuneBend: UInt16?         // plug-in instruments: the pitch bend that holds the track's fine tuning (sent before live notes)
     var insertKeys: [UUID] = []
     var generation = 0
     var loading = false
@@ -54,6 +55,8 @@ final class AudioEngine {
     /// Keeps big arrangements (dozens of tracks summing) from clipping the output.
     /// One low-shelf band on the whole mix: the master Bass control.
     private let bassEQ = AVAudioUnitEQ(numberOfBands: 1)
+    /// Fine tuning of the whole mix, in cents (bypassed, so it costs nothing, while it is 0).
+    private let masterTune = AVAudioUnitTimePitch()
     private let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
         componentType: kAudioUnitType_Effect, componentSubType: kAudioUnitSubType_PeakLimiter,
         componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
@@ -107,11 +110,13 @@ final class AudioEngine {
         #if os(iOS)
         Self.configureAudioSession()
         #endif
-        engine.attach(limiter); engine.attach(bassEQ); engine.attach(masterFXIn); engine.attach(masterFXOut)
+        engine.attach(limiter); engine.attach(bassEQ); engine.attach(masterTune); engine.attach(masterFXIn); engine.attach(masterFXOut)
+        masterTune.bypass = true
         let shelf = bassEQ.bands[0]
         shelf.filterType = .lowShelf; shelf.frequency = 140; shelf.bandwidth = 1; shelf.gain = 0; shelf.bypass = false
         engine.connect(engine.mainMixerNode, to: bassEQ, format: nil)
-        engine.connect(bassEQ, to: masterFXIn, format: nil)
+        engine.connect(bassEQ, to: masterTune, format: nil)
+        engine.connect(masterTune, to: masterFXIn, format: nil)
         engine.connect(masterFXIn, to: masterFXOut, format: nil)
         engine.connect(masterFXOut, to: limiter, format: nil)
         engine.connect(limiter, to: engine.outputNode, format: nil)
@@ -418,6 +423,7 @@ final class AudioEngine {
             for (i, p) in insertSpecs.enumerated() where i < newFx.count { newFx[i].auAudioUnit.shouldBypassEffect = p.bypassed }
             s.loading = false
             self.applySlideRange(s.id)
+            self.applyTunings()
             self.startEngine()
             self.onGraphChanged?()
         }
@@ -551,7 +557,35 @@ final class AudioEngine {
 
     // MARK: - Mix
 
+    // MARK: - Fine tuning (cents)
+
+    private var trackCents: [UUID: Double] = [:], pluginBend: [UUID: UInt16] = [:]
+    private var masterCents = 0.0
+
+    /// The built-in sampler tunes itself (`globalTuning`, in cents); a plug-in is held at a pitch bend (see `MIDIFile.trackEvents`, which sends it with the notes);
+    /// the whole mix goes through a pitch shifter, which only runs while the master tune isn't 0.
+    private func applyTunings() {
+        for (id, s) in strips {
+            guard let inst = s.instrument else { continue }
+            if let sam = inst as? SamplerUnit {
+                let c = Float(trackCents[id] ?? 0)
+                if sam.globalTuning != c { sam.globalTuning = c }
+                s.detuneBend = nil
+            } else { s.detuneBend = pluginBend[id] }
+        }
+        let on = abs(masterCents) >= 0.05
+        if masterTune.bypass == on { masterTune.bypass = !on }
+        if on, masterTune.pitch != Float(masterCents) { masterTune.pitch = Float(masterCents) }
+    }
+
     func applyMix(_ project: Project, beat: Double?) {
+        trackCents = [:]; pluginBend = [:]
+        for t in project.tracks where t.kind == .instrument {
+            trackCents[t.id] = t.tuneCents
+            if t.instrument.plugin != nil, abs(t.tuneCents) >= 0.05 { pluginBend[t.id] = UInt16(MIDIFile.bendValue(t.tuneCents / 100, range: MIDIFile.effectiveBendRange(t))) }
+        }
+        masterCents = project.masterCents
+        applyTunings()
         engine.mainMixerNode.outputVolume = Mixer.gain(project.masterVolume)
         if bassEQ.bands[0].gain != Float(project.masterBass) { bassEQ.bands[0].gain = Float(project.masterBass) }
         let anySolo = project.tracks.contains { $0.solo }
@@ -626,7 +660,7 @@ final class AudioEngine {
 
     private func reloadSequenceNow(_ project: Project, metronome: Bool) {
         slideRanges = [:]
-        for t in project.tracks where t.instrument.plugin != nil && t.clips.contains(where: { $0.notes.contains { $0.isSlide } }) {
+        for t in project.tracks where t.instrument.plugin != nil && (t.tuneCents != 0 || t.clips.contains(where: { $0.notes.contains { $0.isSlide } })) {
             slideRanges[t.id] = MIDIFile.effectiveBendRange(t)
         }
         for id in slideRanges.keys { applySlideRange(id) }
@@ -705,6 +739,7 @@ final class AudioEngine {
     // MARK: - Live notes
 
     func noteOn(trackID: UUID, pitch: Int, velocity: Int) {
+        if let bend = strips[trackID]?.detuneBend { strips[trackID]?.instrument?.sendPitchBend(bend, onChannel: 0) }
         strips[trackID]?.instrument?.startNote(UInt8(pitch & 127), withVelocity: UInt8(min(127, max(1, velocity))), onChannel: 0)
     }
     func noteOff(trackID: UUID, pitch: Int) {
@@ -735,6 +770,9 @@ final class AudioEngine {
         for st in strips.values {
             if let sam = st.instrument as? SamplerUnit, let sp = st.spec { try? Self.loadSamplerSync(sam, spec: sp) }
         }
+        trackCents = [:]; pluginBend = [:]; masterCents = project.masterCents                  // (a reloaded sampler forgets its tuning)
+        for t in project.tracks where t.kind == .instrument { trackCents[t.id] = t.tuneCents }
+        applyTunings()
         defer {
             engine.disableManualRenderingMode()
             // Leaving offline mode re-initialises the samplers again and they fall back to the default sine tone,
@@ -742,6 +780,7 @@ final class AudioEngine {
             for st in strips.values {
                 if let sam = st.instrument as? SamplerUnit, let sp = st.spec { try? Self.loadSamplerSync(sam, spec: sp) }
             }
+            applyTunings()
             installMasterTap()
             startEngine()
         }

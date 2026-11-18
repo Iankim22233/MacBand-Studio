@@ -23,6 +23,8 @@ extension Session {
             self.selectedClipID = self.project.tracks[ti].clips.first?.id
             if args.contains("--demo-mute-solo") { self.project.tracks[1].mute = true; self.project.tracks[2].solo = true }      // for pictures of the M and S buttons
             self.demoPanel(value("--demo-panel"))
+            if args.contains("--demo-master") { self.selectMaster(); self.project.masterCents = -32 }       // the Master inspector, tuned to A = 432
+            if let c = value("--demo-cents"), let v = Double(c) { self.project.tracks[ti].tuneCents = v }
             if args.contains("--demo-jam") { JamWindow.shared.show(self) }       // the 3D stage in its own window
             if args.contains("--demo-slide"), let loc = self.selectedClipLocation {            // pictures of linked slides: a short melody, linked with Slide
                 var melody: [Note] = []

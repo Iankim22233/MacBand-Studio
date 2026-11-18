@@ -124,6 +124,7 @@ struct Track: Codable, Identifiable, Hashable {
     var mute = false
     var solo = false
     var bendRange: Int = 12         // semitones, used for slide notes
+    var tuneCents: Double = 0       // fine tuning of the instrument, -100…+100 cents (a hundredth of a semitone)
     var trim: Double = 0            // dB, on top of the fader (Auto Balance sets it; the fader alone can't lift quiet sounds)
     var clips: [Clip] = []
     var audioClips: [AudioClip] = []
@@ -147,6 +148,7 @@ struct Track: Codable, Identifiable, Hashable {
         solo = try c.decodeIfPresent(Bool.self, forKey: .solo) ?? false
         bendRange = try c.decodeIfPresent(Int.self, forKey: .bendRange) ?? 12
         trim = try c.decodeIfPresent(Double.self, forKey: .trim) ?? 0
+        tuneCents = try c.decodeIfPresent(Double.self, forKey: .tuneCents) ?? 0
         clips = try c.decodeIfPresent([Clip].self, forKey: .clips) ?? []
         audioClips = try c.decodeIfPresent([AudioClip].self, forKey: .audioClips) ?? []
     }
@@ -232,6 +234,7 @@ struct Project: Codable {
     var scale: ScaleKind = .chromatic
     var masterVolume: Double = 0.8
     var masterBass: Double = 0              // dB, low shelf on the whole mix (negative = less bass)
+    var masterCents: Double = 0             // fine tuning of the whole mix, -100…+100 cents
     var masterInserts: [PluginSpec] = []    // effects on the whole mix (the master track)
     var tracks: [Track] = []
 
@@ -255,6 +258,7 @@ struct Project: Codable {
         scale = try c.decodeIfPresent(ScaleKind.self, forKey: .scale) ?? .chromatic
         masterVolume = try c.decodeIfPresent(Double.self, forKey: .masterVolume) ?? 0.8
         masterBass = try c.decodeIfPresent(Double.self, forKey: .masterBass) ?? 0
+        masterCents = try c.decodeIfPresent(Double.self, forKey: .masterCents) ?? 0
         masterInserts = try c.decodeIfPresent([PluginSpec].self, forKey: .masterInserts) ?? []
         tracks = try c.decodeIfPresent([Track].self, forKey: .tracks) ?? []
     }
