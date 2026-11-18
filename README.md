@@ -123,6 +123,15 @@ clip, and the arrangement shows a strip of its frames with the waveform over it.
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
 Not yet: exporting the picture together with the bounce.
 
+## Tune (cents)
+
+Every instrument track has a **Tune** slider in the Inspector (−100 to +100 cents, a cent being a hundredth of a semitone), and the **Master** has
+one for the whole mix (−32 cents is the same as A = 432 Hz). Double-click the number to put it back to 0. Instruments tuned with the sampler
+(General MIDI, SoundFont and GarageBand sounds, drums) are tuned inside the sampler; plug-ins such as Vital are held at a small pitch bend
+(sent with every note, so it works whatever the playback position, and the plug-in's bend range is widened if a slide needs more), which keeps
+slides working on top of the tuning; the master tune runs the whole mix through a pitch shifter that is bypassed while it is 0. Tuning is saved
+with the project and is in bounces. `--centstest` measures the pitch that comes out (including Vital).
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track
@@ -163,7 +172,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--centstest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
-`--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-video movie.mov [--demo-video-beat N]] [--demo-shot out.png]` ·
+`--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-video movie.mov [--demo-video-beat N]] [--demo-cents N] [--demo-master] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).

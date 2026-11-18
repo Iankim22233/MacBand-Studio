@@ -60,12 +60,13 @@ enum MIDIFile {
     /// The bend range a track's slides are played with: the track's own setting, widened (up to 48 semitones) when a slide
     /// travels further than that, so every slide reaches the note it points at instead of stopping at the range.
     static func effectiveBendRange(_ track: Track) -> Int {
-        var need = 0
+        let detune = track.instrument.plugin != nil ? abs(track.tuneCents) / 100 : 0        // a plug-in's fine tuning is a small bend on top of any slide
+        var need = Int(detune.rounded(.up))
         for clip in track.clips {
             let normals = clip.notes.filter { !$0.isSlide }
             for n in clip.notes where n.isSlide {
                 guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
-                need = max(need, abs(n.pitch - src.pitch))
+                need = max(need, Int((Double(abs(n.pitch - src.pitch)) + detune).rounded(.up)))
             }
         }
         return min(48, max(track.bendRange, need))
@@ -78,6 +79,10 @@ enum MIDIFile {
         func add(_ tick: Int, _ order: Int, _ b: [UInt8]) { evs.append(Ev(tick: tick, order: order, bytes: b)) }
 
         let hasSlides = track.clips.contains { $0.notes.contains { $0.isSlide } }
+        // Plug-ins have no tuning control of their own, so their fine tuning is a constant pitch bend (sent ahead of every note, since the
+        // sequencer doesn't chase controllers when playback starts part-way). The built-in sampler tunes itself (`globalTuning`).
+        let detune = track.instrument.plugin != nil ? track.tuneCents / 100 : 0
+        let bends = hasSlides || detune != 0
         if forExport {
             if !track.instrument.isDrums && track.instrument.plugin == nil {
                 add(0, 0, [0xC0 | ch, UInt8(track.instrument.gmProgram & 127)])
@@ -85,7 +90,11 @@ enum MIDIFile {
             add(0, 0, [0xB0 | ch, 10, UInt8(min(127, max(0, Int(64 + track.pan * 63))))])
         }
         let range = effectiveBendRange(track)
-        if hasSlides {
+        func bend(_ semis: Double) -> [UInt8] {
+            let v = bendValue(semis, range: range)
+            return [0xE0 | ch, UInt8(v & 127), UInt8((v >> 7) & 127)]
+        }
+        if bends {
             // RPN 0: pitch-bend sensitivity
             for (cc, v) in [(101, 0), (100, 0), (6, range), (38, 0), (101, 127), (100, 127)] {
                 add(0, 0, [0xB0 | ch, UInt8(cc), UInt8(v)])
@@ -109,8 +118,10 @@ enum MIDIFile {
             for n in notes where n.isSlide && source(of: n) != nil { consumedSlides.insert(n.id) }
 
             // Normal notes
+            var detuned = Set<Int>()
             for n in notes where !n.isSlide || !consumedSlides.contains(n.id) {
                 let on = ticks(base + n.start), off = max(on + 1, ticks(base + n.end))
+                if detune != 0, detuned.insert(on).inserted { add(on, 0, bend(detune)) }
                 add(on, 2, [0x90 | ch, UInt8(n.pitch & 127), UInt8(min(127, max(1, n.velocity)))])
                 add(off, 1, [0x80 | ch, UInt8(n.pitch & 127), 0])
             }
@@ -131,14 +142,14 @@ enum MIDIFile {
                     for i in 0...steps {
                         let f = Double(i) / Double(steps)
                         let semis = cur + (target - cur) * f
-                        add(ticks(t0 + s.length * f), 0, [0xE0 | ch, UInt8(bendValue(semis, range: range) & 127), UInt8((bendValue(semis, range: range) >> 7) & 127)])
+                        add(ticks(t0 + s.length * f), 0, bend(semis + detune))
                     }
                     cur = target
                 }
                 // Return to centre just before the next normal note (or shortly after this one ends)
                 let nextStart = normals.filter { $0.start >= src.end - 1e-6 && $0.id != src.id }.map { $0.start }.min()
                 let resetBeat = base + (nextStart.map { max(src.end, $0 - 0.01) } ?? (src.end + 2))
-                add(ticks(resetBeat), 0, [0xE0 | ch, 0x00, 0x40])
+                add(ticks(resetBeat), 0, bend(detune))
             }
 
             // Volume automation → CC7 (export only; live playback drives the mixer fader instead)
