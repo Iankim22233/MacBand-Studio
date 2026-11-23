@@ -117,6 +117,24 @@ std::string ToUTF8(const TChar *s) {
     return str.UTF8String ?: "";
 }
 
+/// Some plug-ins (JUCE ones, Vital among them) report every parameter as 0…1 and only show the real units in the text they display for a value.
+/// Reads that text at 0 and at 1 ("0" … "48") so a value in real units can be set. False when the plug-in reports proper units or says nothing useful.
+bool DisplayRange(IEditController *c, ParamID id, double &lo, double &hi) {
+    if (c->normalizedParamToPlain(id, 1) - c->normalizedParamToPlain(id, 0) > 1.0001) return false;          // it reports real units already
+    String128 a{}, b{};
+    if (c->getParamStringByValue(id, 0.0, a) != kResultOk || c->getParamStringByValue(id, 1.0, b) != kResultOk) return false;
+    auto number = [](const TChar *s, double &out) {
+        std::string t = ToUTF8(s);
+        const char *p = t.c_str();
+        while (*p && !(isdigit((unsigned char)*p) || *p == '-' || *p == '+' || *p == '.')) p++;
+        if (!*p) return false;
+        char *end = nullptr;
+        out = strtod(p, &end);
+        return end != p;
+    };
+    return number(a, lo) && number(b, hi) && hi - lo > 1.0001;
+}
+
 } // namespace
 
 // MARK: - View controller for the plugin editor
@@ -523,6 +541,47 @@ static void HandleMIDI(Instance &i, const uint8_t *d, int len, int32 offset) {
         for (uint32_t c = 0; c < outCh; c++) outputData->mBuffers[c].mDataByteSize = frames * 4;
         return noErr;
     };
+}
+
+// MARK: Parameters
+
+- (NSDictionary<NSString *, NSNumber *> *)parameterWithWords:(NSArray<NSString *> *)words {
+    std::shared_ptr<Instance> inst = _inst;
+    if (!inst || !inst->controller) return nil;
+    __block NSDictionary *found = nil;
+    void (^look)(void) = ^{
+        IEditController *c = inst->controller;
+        int32 n = c->getParameterCount();
+        for (int32 k = 0; k < n && !found; k++) {
+            ParameterInfo info{};
+            if (c->getParameterInfo(k, info) != kResultOk || (info.flags & ParameterInfo::kIsReadOnly) || (info.flags & ParameterInfo::kIsHidden)) continue;
+            NSString *title = [@(ToUTF8(info.title).c_str()) lowercaseString];
+            BOOL all = YES;
+            for (NSString *w in words) if ([title rangeOfString:w.lowercaseString].location == NSNotFound) { all = NO; break; }
+            if (!all) continue;
+            double lo = c->normalizedParamToPlain(info.id, 0), hi = c->normalizedParamToPlain(info.id, 1), value = c->normalizedParamToPlain(info.id, c->getParamNormalized(info.id));
+            double dlo, dhi;
+            if (DisplayRange(c, info.id, dlo, dhi)) { value = dlo + c->getParamNormalized(info.id) * (dhi - dlo); lo = dlo; hi = dhi; }
+            found = @{@"id": @(info.id), @"min": @(lo), @"max": @(hi), @"value": @(value)};
+        }
+    };
+    if ([NSThread isMainThread]) look(); else dispatch_sync(dispatch_get_main_queue(), look);
+    return found;
+}
+
+- (BOOL)setParameter:(uint32_t)parameterID plainValue:(double)plain {
+    std::shared_ptr<Instance> inst = _inst;
+    if (!inst || !inst->controller) return NO;
+    void (^apply)(void) = ^{
+        IEditController *c = inst->controller;
+        double dlo, dhi;
+        ParamValue n = DisplayRange(c, parameterID, dlo, dhi) ? (plain - dlo) / (dhi - dlo) : c->plainParamToNormalized(parameterID, plain);
+        n = std::min(1.0, std::max(0.0, n));
+        c->setParamNormalized(parameterID, n);                   // the plug-in's own record of it (and its editor)
+        inst->transfer.addChange(parameterID, n, 0);             // and the processor, at the next render
+    };
+    if ([NSThread isMainThread]) apply(); else dispatch_sync(dispatch_get_main_queue(), apply);
+    return YES;
 }
 
 // MARK: State

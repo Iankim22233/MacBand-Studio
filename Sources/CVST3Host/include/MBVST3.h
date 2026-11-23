@@ -20,6 +20,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Transport info the plugin sees in its process context.
 - (void)setHostTempo:(double)bpm beat:(double)beat playing:(BOOL)playing;
 
+/// The first writable parameter whose title contains every one of `words` (case-insensitive), as {id, title, min, max, value} in the
+/// parameter's own units, or nil. VST3 plug-ins show no parameters to AVAudioEngine, so this is how the app finds e.g. "Pitch Bend Range".
+- (nullable NSDictionary<NSString *, NSNumber *> *)parameterWithWords:(NSArray<NSString *> *)words;
+/// Sets a parameter (by `id` from `parameterWithWords:`) to a value in its own units, in the controller and in the processor.
+- (BOOL)setParameter:(uint32_t)parameterID plainValue:(double)plain;
+
 @end
 
 NS_ASSUME_NONNULL_END
