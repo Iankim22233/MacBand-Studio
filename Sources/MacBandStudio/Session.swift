@@ -151,6 +151,7 @@ final class Session: ObservableObject {
         selectedTrackID = t.id
         selectedClipID = t.clips.first?.id
         engine.onError = { [weak self] m in Task { @MainActor in self?.errorMessage = m } }
+        engine.onNotice = { [weak self] m in Task { @MainActor in self?.showToast(m) } }
         engine.onGraphChanged = { [weak self] in Task { @MainActor in self?.graphChanged() } }
         engine.syncTracks(project.tracks, master: project.masterInserts)
         applyMix()

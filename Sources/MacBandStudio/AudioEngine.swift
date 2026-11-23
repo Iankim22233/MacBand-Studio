@@ -618,10 +618,35 @@ final class AudioEngine {
         }
     }
 
-    private func applySlideRange(_ id: UUID) {
-        guard let semis = slideRanges[id], let au = strips[id]?.instrument?.auAudioUnit, let p = Self.bendRangeParameter(of: au) else { return }
+    /// Sets the plug-in's bend range for the track's slides. False when the plug-in is loaded but has no bend-range control to set.
+    @discardableResult
+    private func applySlideRange(_ id: UUID) -> Bool {
+        guard let semis = slideRanges[id], let au = strips[id]?.instrument?.auAudioUnit else { return true }
+        #if canImport(CVST3Host)
+        // a hosted VST3 shows no parameters to the engine, so its bend range is found and set through the host itself
+        if let v3 = au as? MBVST3AudioUnit {
+            guard let info = v3.parameter(withWords: ["bend", "range"]), let pid = info["id"]?.uint32Value, let lo = info["min"]?.doubleValue, let hi = info["max"]?.doubleValue else { return false }
+            let v = min(hi, max(lo, Double(semis)))
+            if abs((info["value"]?.doubleValue ?? -1) - v) > 1e-6 { _ = v3.setParameter(pid, plainValue: v) }
+            return true
+        }
+        #endif
+        guard let p = Self.bendRangeParameter(of: au) else { return false }
         let v = min(p.maxValue, max(p.minValue, AUValue(semis)))
         if p.value != v { p.value = v }
+        return true
+    }
+
+    /// Plug-ins with no bend-range control to set can't be told how far a slide goes: say so, once for each size of slide.
+    private var noticedRanges = Set<String>()
+    var onNotice: ((String) -> Void)?
+    private func noticeMissingBendRange(_ project: Project) {
+        for t in project.tracks {
+            guard let r = slideRanges[t.id], r > t.bendRange, let plugin = t.instrument.plugin, strips[t.id]?.instrument != nil, !applySlideRange(t.id) else { continue }
+            if noticedRanges.insert("\(t.id)-\(r)").inserted {
+                onNotice?("“\(plugin.name)” has no bend-range setting MacBand can reach, so slides longer than \(t.bendRange) semitones stop short. Set the plug-in's own bend range to \(r) and this track's Slide range to \(r).")
+            }
+        }
     }
 
     private func reloadSequenceNow(_ project: Project, metronome: Bool) {
@@ -630,6 +655,7 @@ final class AudioEngine {
             slideRanges[t.id] = MIDIFile.effectiveBendRange(t)
         }
         for id in slideRanges.keys { applySlideRange(id) }
+        noticeMissingBendRange(project)
         let wasPlaying = sequencer.isPlaying
         let songPos = position
         sequencer.stop()
