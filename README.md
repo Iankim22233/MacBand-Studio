@@ -76,6 +76,8 @@ humanize, legato, reverse, transpose, fit to the scale, add major/minor/seventh 
 
 **Slides:** a slide note glides the note that is sounding to its own pitch. Select two or more notes (a melody, one note after another) and press **Slide** (or **S**): the first becomes one long note and the rest become slide notes under it, so the pitch glides from note to note. Press it again to take the slide apart. A slide note has a grip at each end: drag the right end to make the glide longer (slower) or shorter (faster), drag the left end to change when it begins. The slide next to it follows, so the chain stays connected (one glide gets slower as the next gets faster). With nothing selected, Slide just decides whether newly drawn notes are slide notes.
 
+**Transitions (Tools ▸ Transitions):** select a note, then **Slide to Note** makes the other notes closest to it in pitch slide into it (a short glide over the tail of each, arriving as it ends); if two are equally near, say one above and one below, both slide to it. **Slide After Note** makes the selected note slide on to the closest note after it, by pitch (if two tie, the earlier one). Notes of the same pitch are skipped, and a note that already has a slide is left alone.
+
 ## Visualizer
 
 The **Visualizer** tab (or **View ▸ Visualizer Window**, ⌥⌘V, which can go full screen) has two kinds of picture:
