@@ -40,7 +40,18 @@ struct Note: Codable, Identifiable, Hashable {
     /// FL-style slide note: glides the currently sounding note to this note's pitch,
     /// taking this note's length to get there.
     var isSlide: Bool = false
+    /// The note this slide glides, when it was made for one in particular (Slide to Note / Slide After Note). Slides made by
+    /// linking notes leave it empty and glide whichever note is sounding when they start.
+    var slideBase: UUID?
     var end: Double { start + length }
+
+    /// The note a slide glides: the one it was made for while that is still sounding when the slide starts, otherwise the last
+    /// normal note sounding then. `normals` are the pattern's notes that aren't slides, in time order.
+    static func source(of slide: Note, normals: [Note]) -> Note? {
+        let sounding: (Note) -> Bool = { $0.start <= slide.start + 1e-6 && $0.end > slide.start + 1e-6 }
+        if let b = slide.slideBase, let n = normals.first(where: { $0.id == b && sounding($0) }) { return n }
+        return normals.last(where: sounding)
+    }
 }
 
 struct AutoPoint: Codable, Identifiable, Hashable {

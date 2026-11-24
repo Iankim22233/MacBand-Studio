@@ -452,7 +452,7 @@ final class PianoRollView: PlatformView {
         let slides = notes.filter { $0.isSlide }.sorted { $0.start < $1.start }
         var reached: [UUID: Int] = [:]                    // base note → the pitch its last slide ended on
         for n in slides {
-            guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
+            guard let src = Note.source(of: n, normals: normals) else { continue }
             let fromPitch = reached[src.id] ?? src.pitch
             reached[src.id] = n.pitch
             let from = CGPoint(x: x(n.start), y: y(fromPitch) + rowH / 2)
@@ -754,7 +754,7 @@ final class PianoRollView: PlatformView {
                 // the neighbouring slide that touches the edge being dragged, and the note this slide glides
                 linkedOrig = zone == .end ? all.first { $0.isSlide && $0.id != n.id && abs($0.start - n.end) < 1e-6 }
                                           : all.first { $0.isSlide && $0.id != n.id && abs($0.end - n.start) < 1e-6 }
-                anchorOrig = all.last { !$0.isSlide && $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }
+                anchorOrig = Note.source(of: n, normals: all.filter { !$0.isSlide })
             }
             return
         }
