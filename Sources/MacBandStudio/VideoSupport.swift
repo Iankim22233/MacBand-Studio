@@ -260,29 +260,60 @@ final class VideoView: NSView {
     private var lastBuffer: CVPixelBuffer?
 }
 
+/// The Video window is a small floating panel: it stays above MacBand's windows (and doesn't take the keyboard or the focus when you
+/// click it), so the picture stays in view while you work in the main window. View ▸ Keep Video on Top turns that off.
+final class VideoPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 @MainActor
 final class VideoWindow: NSObject, NSWindowDelegate {
     static let shared = VideoWindow()
     private(set) var window: NSWindow?
     private(set) var view: VideoView?
+    static let onTopKey = "videoOnTop"
+    /// Stays above the other windows (the default).
+    var onTop: Bool { UserDefaults.standard.object(forKey: Self.onTopKey) as? Bool ?? true }
+
+    func setOnTop(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Self.onTopKey)
+        applyLevel()
+    }
+
+    private func applyLevel() {
+        guard let w = window as? NSPanel else { return }
+        w.level = onTop ? .floating : .normal
+        w.isFloatingPanel = onTop
+        w.hidesOnDeactivate = false
+    }
 
     func show(_ session: Session) {
-        if let w = window { w.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
+        if let w = window { applyLevel(); w.orderFrontRegardless(); return }
         let v = VideoView(session: session)
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 450), styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        let w = VideoPanel(contentRect: NSRect(x: 0, y: 0, width: 480, height: 270),
+                           styleMask: [.titled, .closable, .resizable, .miniaturizable, .utilityWindow, .nonactivatingPanel], backing: .buffered, defer: false)
         w.title = "Video"
         w.identifier = NSUserInterfaceItemIdentifier("video")
         w.contentView = v
         w.contentAspectRatio = NSSize(width: 16, height: 9)
         w.isReleasedWhenClosed = false
         w.backgroundColor = .black
-        w.minSize = NSSize(width: 320, height: 180)
-        w.collectionBehavior.insert(.fullScreenPrimary)
+        w.minSize = NSSize(width: 240, height: 135)
+        w.isMovableByWindowBackground = true
+        w.becomesKeyOnlyIfNeeded = true
+        w.collectionBehavior = [.fullScreenAuxiliary]           // also shows over a full-screen MacBand
         w.delegate = self
-        w.center()
         window = w; view = v
-        w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        applyLevel()
+        // where it was last time, else the top right corner of the main window
+        if !w.setFrameUsingName("MacBandVideoPanel") {
+            if let host = NSApp.windows.first(where: { $0.isVisible && $0 !== w && $0.canBecomeMain })?.frame {
+                w.setFrameTopLeftPoint(NSPoint(x: host.maxX - w.frame.width - 16, y: host.maxY - 60))
+            } else { w.center() }
+        }
+        w.setFrameAutosaveName("MacBandVideoPanel")
+        w.orderFrontRegardless()
     }
 
     nonisolated func windowShouldClose(_ sender: NSWindow) -> Bool {

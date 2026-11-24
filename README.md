@@ -120,7 +120,9 @@ and `--jamshots <dir>` renders pictures of the stage.
 The video's own sound is the clip's audio (a video without sound gets a silent clip), so it can be moved, trimmed and muted like any audio
 clip, and the arrangement shows a strip of its frames with the waveform over it. The picture shows in the **Video window**
 (**View ▸ Video Window**, ⌥⌘M, which opens by itself on import): it plays with the song, jumps when you move the playhead,
-and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
+and shows nothing where no video clip is. It is a small floating panel that stays above MacBand's windows and doesn't take the focus
+when you click it, so you can keep working in the main window with the picture in view (drag it anywhere, resize it by its edges;
+**View ▸ Keep Video on Top** turns the floating off). It remembers where you left it. The video files are kept with the project (next to it in the “… Audio” folder).
 Not yet: exporting the picture together with the bounce.
 
 ## Levels: Trim, Auto Balance, Bass

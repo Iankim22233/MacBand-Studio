@@ -189,6 +189,24 @@ enum VideoTest {
         check(sawBlue, "while playing the picture runs on to the blue part (it started at red, 0.6 s)")
         s.transport.isPlaying = false; view.step()
 
+        // the Video window floats above the main window, and stays there when the main window is clicked
+        do {
+            let main = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+            main.makeKeyAndOrderFront(nil)
+            VideoWindow.shared.setOnTop(true)
+            VideoWindow.shared.show(s)
+            guard let panel = VideoWindow.shared.window as? NSPanel else { check(false, "the Video window is a panel"); return 1 }
+            check(panel.level == .floating && panel.isFloatingPanel && panel.isVisible, "the Video window is a floating panel")
+            main.makeKeyAndOrderFront(nil)                                // click in the main window
+            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            check(panel.isVisible && panel.level.rawValue > main.level.rawValue, "…it stays above the main window when that is clicked")
+            check(!panel.canBecomeMain && panel.styleMask.contains(.nonactivatingPanel), "…and clicking it doesn't take the focus from the main window")
+            VideoWindow.shared.setOnTop(false)
+            check(panel.level == .normal, "Keep Video on Top off lets it sit with the other windows")
+            VideoWindow.shared.setOnTop(true)
+            panel.orderOut(nil); main.orderOut(nil)
+        }
+
         print(failures == 0 ? "ALL VIDEO CHECKS PASSED" : "\(failures) VIDEO CHECK(S) FAILED")
         return failures == 0 ? 0 : 1
     }

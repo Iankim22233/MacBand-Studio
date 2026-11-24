@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct MacBandApp: App {
     @StateObject private var session = Session()
+    @AppStorage(VideoWindow.onTopKey) private var videoOnTop = true
 
     var body: some Scene {
         Window("MacBand Studio", id: "main") {
@@ -66,6 +67,7 @@ struct MacBandApp: App {
                 Button("Visualizer Window") { VisualizerWindow.shared.show(session) }.keyboardShortcut("v", modifiers: [.command, .option])
                 Button("3D Stage Window") { JamWindow.shared.show(session) }.keyboardShortcut("j", modifiers: [.command, .option])
                 Button("Video Window") { VideoWindow.shared.show(session) }.keyboardShortcut("m", modifiers: [.command, .option])
+                Toggle("Keep Video on Top", isOn: Binding(get: { videoOnTop }, set: { videoOnTop = $0; VideoWindow.shared.setOnTop($0) }))
                 Divider()
                 ButtonColorMenu()
             }
