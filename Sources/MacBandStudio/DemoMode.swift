@@ -30,6 +30,9 @@ extension Session {
                 self.modify { $0.tracks[loc.track].clips[loc.clip].notes.append(contentsOf: melody) }
                 self.selectedNoteIDs = Set(melody.prefix(5).map { $0.id })
                 self.slideAction()
+                if args.contains("--demo-slide-fast") {                // quick glides: the note they arrive on is held after them
+                    self.modify { p in for i in p.tracks[loc.track].clips[loc.clip].notes.indices where p.tracks[loc.track].clips[loc.clip].notes[i].isSlide { p.tracks[loc.track].clips[loc.clip].notes[i].length = 0.25 } }
+                }
             }
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             #if os(macOS)

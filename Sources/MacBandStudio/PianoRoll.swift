@@ -271,6 +271,8 @@ final class PianoRollView: PlatformView {
     private var linkedOrig: Note?
     private var anchorOrig: Note?
     private var grab: (beat: Double, pitch: Int) = (0, 0)
+    /// Dragging a slide's ribbon (not its end handle): how far past the glide's end the pointer took hold, so the end follows the pointer's movement.
+    private var glideGrab: Double = 0
     private var primary: UUID?
     private var marqueeStart: CGPoint = .zero
     private var marqueeRect: CGRect?
@@ -445,30 +447,12 @@ final class PianoRollView: PlatformView {
             ctx.fill(CGRect(x: endX, y: rulerH, width: 1, height: h))
         }
 
-        // Slide connectors then notes
+        // Slides are drawn as ribbons running from the pitch they start on to the pitch they reach, with a handle at each end;
+        // the notes at either end keep their pitch whatever the ribbon does.
         let notes = c.notes
-        let normals = notes.filter { !$0.isSlide }
-        // Slides on one base note glide one after the other, so each starts from the pitch the one before it reached.
-        let slides = notes.filter { $0.isSlide }.sorted { $0.start < $1.start }
-        var reached: [UUID: Int] = [:]                    // base note → the pitch its last slide ended on
-        for n in slides {
-            guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
-            let fromPitch = reached[src.id] ?? src.pitch
-            reached[src.id] = n.pitch
-            let from = CGPoint(x: x(n.start), y: y(fromPitch) + rowH / 2)
-            let to = CGPoint(x: x(n.end), y: y(n.pitch) + rowH / 2)
-            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
-            ctx.setLineWidth(2)
-            ctx.setLineCap(.round)
-            ctx.move(to: from); ctx.addLine(to: to); ctx.strokePath()
-            // arrow head
-            let ang = atan2(to.y - from.y, to.x - from.x)
-            let a1 = CGPoint(x: to.x - 7 * cos(ang - 0.45), y: to.y - 7 * sin(ang - 0.45))
-            let a2 = CGPoint(x: to.x - 7 * cos(ang + 0.45), y: to.y - 7 * sin(ang + 0.45))
-            ctx.move(to: a1); ctx.addLine(to: to); ctx.addLine(to: a2); ctx.strokePath()
-        }
+        let sources = slideSources(notes)
         for n in notes where !n.isSlide { drawNote(ctx, n, col: col, selected: session.selectedNoteIDs.contains(n.id)) }
-        for n in notes where n.isSlide { drawNote(ctx, n, col: col, selected: session.selectedNoteIDs.contains(n.id)) }
+        for n in notes where n.isSlide { drawNote(ctx, n, col: col, selected: session.selectedNoteIDs.contains(n.id), from: sources[n.id]?.from, until: sources[n.id]?.until) }
 
         if let g = ghostNote() {
             let r = CGRect(x: x(g.start), y: y(g.pitch) + 1, width: max(3, CGFloat(g.length) * ppb - 1), height: rowH - 2)
@@ -507,7 +491,31 @@ final class PianoRollView: PlatformView {
         }
     }
 
-    private func drawNote(_ ctx: CGContext, _ n: Note, col: NSColor, selected: Bool) {
+    private static let handleR: CGFloat = 6
+
+    /// For each slide note: the long note it glides and the pitch the glide starts from. Slides on one long note go one after
+    /// the other, so each starts from the pitch the one before it reached.
+    private func slideSources(_ notes: [Note]) -> [UUID: (base: Note, from: Int, until: Double)] {
+        let normals = notes.filter { !$0.isSlide }
+        var reached: [UUID: Int] = [:]
+        var lastSlide: [UUID: UUID] = [:]                  // base note → the slide before this one
+        var out: [UUID: (base: Note, from: Int, until: Double)] = [:]
+        for n in notes.filter({ $0.isSlide }).sorted(by: { $0.start < $1.start }) {
+            guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
+            if let prev = lastSlide[src.id] { out[prev]?.until = n.start }          // the next glide takes over from there
+            out[n.id] = (src, reached[src.id] ?? src.pitch, max(src.end, n.end))
+            reached[src.id] = n.pitch
+            lastSlide[src.id] = n.id
+        }
+        return out
+    }
+
+    /// Where a slide's ribbon starts and ends: the middle of the row it leaves, the middle of the row it arrives on.
+    private func slideEnds(_ n: Note, from: Int) -> (CGPoint, CGPoint) {
+        (CGPoint(x: x(n.start), y: y(from) + rowH / 2), CGPoint(x: x(n.end), y: y(n.pitch) + rowH / 2))
+    }
+
+    private func drawNote(_ ctx: CGContext, _ n: Note, col: NSColor, selected: Bool, from: Int? = nil, until: Double? = nil) {
         let rx = x(n.start), rw = max(3, CGFloat(n.length) * ppb - 1)
         if rx + rw < keysW || rx > bounds.width { return }
         let ry = y(n.pitch)
@@ -515,23 +523,39 @@ final class PianoRollView: PlatformView {
         let r = CGRect(x: rx, y: ry + 1, width: rw, height: rowH - 2)
         let path = CGPath(roundedRect: r, cornerWidth: 0, cornerHeight: 0, transform: nil)
         let vel = CGFloat(n.velocity) / 127
-        if n.isSlide {
+        if n.isSlide, let from {
+            // the note the glide arrives on: a faint outline for all of it, filled from where the glide ends (the pitch is held from
+            // there); the ribbon runs to it from where the glide starts
+            let stopX = max(rx + rw, x(until ?? n.end) - 1)
+            let box = CGRect(x: rx, y: r.minY, width: stopX - rx, height: r.height)
+            ctx.setFillColor(col.withAlphaComponent(0.10).cgColor); ctx.fill(box)
+            if stopX > rx + rw + 0.5 {
+                ctx.setFillColor(col.withAlphaComponent(0.45 + 0.55 * vel).cgColor)
+                ctx.fill(CGRect(x: rx + rw, y: r.minY, width: stopX - rx - rw, height: r.height))
+            }
+            ctx.setStrokeColor(col.withAlphaComponent(0.45).cgColor); ctx.setLineWidth(1); ctx.stroke(box.insetBy(dx: 0.5, dy: 0.5))
+            let (p0, p1) = slideEnds(n, from: from)
+            let half = (rowH - 2) / 2
+            let ribbon = CGMutablePath()
+            ribbon.move(to: CGPoint(x: p0.x, y: p0.y - half)); ribbon.addLine(to: CGPoint(x: p1.x, y: p1.y - half))
+            ribbon.addLine(to: CGPoint(x: p1.x, y: p1.y + half)); ribbon.addLine(to: CGPoint(x: p0.x, y: p0.y + half)); ribbon.closeSubpath()
+            ctx.addPath(ribbon)
+            ctx.setFillColor(col.withAlphaComponent(selected ? 0.9 : 0.72).cgColor); ctx.fillPath()
+            ctx.addPath(ribbon)
+            ctx.setStrokeColor((selected ? Theme.accentNS : col.blended(withFraction: 0.4, of: .white) ?? col).cgColor)
+            ctx.setLineWidth(selected ? 2 : 1); ctx.strokePath()
+            // handles: the end sets how fast the glide is, the start sets when it begins
+            for pt in [p0, p1] {
+                let hr = CGRect(x: pt.x - Self.handleR, y: pt.y - Self.handleR, width: Self.handleR * 2, height: Self.handleR * 2)
+                ctx.setFillColor(NSColor.white.withAlphaComponent(selected ? 1 : 0.85).cgColor); ctx.fillEllipse(in: hr)
+                ctx.setStrokeColor((selected ? Theme.accentNS : col).cgColor); ctx.setLineWidth(1.5); ctx.strokeEllipse(in: hr.insetBy(dx: 0.75, dy: 0.75))
+            }
+        } else if n.isSlide {
             ctx.addPath(path)
             ctx.setFillColor(col.withAlphaComponent(0.30).cgColor); ctx.fillPath()
-            ctx.saveGState(); ctx.addPath(path); ctx.clip()
-            ctx.setStrokeColor(col.withAlphaComponent(0.55).cgColor); ctx.setLineWidth(1)
-            var sx = r.minX - r.height
-            while sx < r.maxX { ctx.move(to: CGPoint(x: sx, y: r.maxY)); ctx.addLine(to: CGPoint(x: sx + r.height, y: r.minY)); sx += 5 }
-            ctx.strokePath(); ctx.restoreGState()
             ctx.addPath(path)
             ctx.setStrokeColor((selected ? Theme.accentNS : col).cgColor)
             ctx.setLineWidth(selected ? 2 : 1.5); ctx.strokePath()
-            // grips at both ends: drag them to change when the glide starts and how fast it is
-            if rw > 10 {
-                ctx.setFillColor(NSColor.white.withAlphaComponent(selected ? 0.95 : 0.6).cgColor)
-                ctx.fill(CGRect(x: r.minX, y: r.minY + 2, width: 3, height: max(2, r.height - 4)))
-                ctx.fill(CGRect(x: r.maxX - 3, y: r.minY + 2, width: 3, height: max(2, r.height - 4)))
-            }
         } else {
             ctx.addPath(path)
             ctx.setFillColor(col.blended(withFraction: selected ? 0.35 : 0, of: .white)!.withAlphaComponent(0.45 + 0.55 * vel).cgColor)
@@ -644,7 +668,7 @@ final class PianoRollView: PlatformView {
 
     // MARK: Hit testing
 
-    private enum Zone { case body, start, end }
+    private enum Zone { case body, start, end, glide }
     /// How close to a note's right end grabs the end: a few points for a mouse, a fingertip's worth on iOS.
     private var edgeGrab: CGFloat {
         #if os(iOS)
@@ -658,6 +682,21 @@ final class PianoRollView: PlatformView {
         guard let c = clip else { return nil }
         // Slide notes lie on top of the long note they glide, so they are picked first (and drawn last).
         let order = c.notes.filter { $0.isSlide }.reversed() + c.notes.filter { !$0.isSlide }.reversed()
+        // A slide's ribbon: its handles first (the end sets the speed, the start sets when it begins), then the ribbon itself
+        // (dragging it sideways changes the speed too), so the notes at either end keep their pitch.
+        let sources = slideSources(c.notes)
+        let grabR = Self.handleR + (edgeGrab > 10 ? 10 : 3)
+        for n in order where n.isSlide {
+            guard let from = sources[n.id]?.from else { continue }
+            let (p0, p1) = slideEnds(n, from: from)
+            if hypot(pt.x - p1.x, pt.y - p1.y) <= grabR { return (n, .end) }
+            if hypot(pt.x - p0.x, pt.y - p0.y) <= grabR { return (n, .start) }
+            if let until = sources[n.id]?.until, pt.x > p1.x + grabR, pt.x <= x(until), abs(pt.y - p1.y) <= rowH / 2 { return (n, .body) }   // the held note after the glide
+            if pt.x >= p0.x, pt.x <= p1.x {
+                let t = p1.x > p0.x ? (pt.x - p0.x) / (p1.x - p0.x) : 0
+                if abs(pt.y - (p0.y + (p1.y - p0.y) * t)) <= (rowH - 2) / 2 + 1 { return (n, .glide) }
+            }
+        }
         for n in order {
             let r = CGRect(x: x(n.start), y: y(n.pitch), width: max(3, CGFloat(n.length) * ppb), height: rowH)
             guard r.contains(pt) else { continue }
@@ -747,12 +786,13 @@ final class PianoRollView: PlatformView {
             origs = [:]
             for s in clip?.notes ?? [] where session.selectedNoteIDs.contains(s.id) { origs[s.id] = s }
             grab = (beat(pt.x), pitch(at: pt.y))
-            mode = zone == .end ? .resize : (zone == .start ? .resizeStart : .move)
+            mode = (zone == .end || zone == .glide) ? .resize : (zone == .start ? .resizeStart : .move)
+            glideGrab = zone == .glide ? beat(pt.x) - n.end : 0
             if zone == .body { startSound(n.pitch) }
             linkedOrig = nil; anchorOrig = nil
             if n.isSlide, zone != .body, let all = clip?.notes {
                 // the neighbouring slide that touches the edge being dragged, and the note this slide glides
-                linkedOrig = zone == .end ? all.first { $0.isSlide && $0.id != n.id && abs($0.start - n.end) < 1e-6 }
+                linkedOrig = zone != .start ? all.first { $0.isSlide && $0.id != n.id && abs($0.start - n.end) < 1e-6 }
                                           : all.first { $0.isSlide && $0.id != n.id && abs($0.end - n.start) < 1e-6 }
                 anchorOrig = all.last { !$0.isSlide && $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }
             }
@@ -818,7 +858,7 @@ final class PianoRollView: PlatformView {
             guard moved, let pid = primary, let po = origs[pid] else { return }
             beginChange()
             let minLen = grid > 0 ? grid : 0.0625
-            var newEnd = max(po.start + minLen, snapped(beat(pt.x)))
+            var newEnd = max(po.start + minLen, snapped(beat(pt.x) - glideGrab))
             if po.isSlide, let l = linkedOrig { newEnd = min(newEnd, l.end - minLen) }      // the next slide keeps a length of its own
             let dL = newEnd - po.end
             let ids = origs
@@ -856,7 +896,7 @@ final class PianoRollView: PlatformView {
     }
 
     func pointerUp(_ event: PointerEvent) {
-        linkedOrig = nil; anchorOrig = nil
+        linkedOrig = nil; anchorOrig = nil; glideGrab = 0
         stopSound()
         pressedKey = nil
         marqueeRect = nil
