@@ -21,10 +21,25 @@ enum VideoStore {
     }
 
     /// Copies the video into MacBand's folder and brings its sound in as the clip's audio (silence if it has none).
-    static func importFile(_ src: URL) async throws -> Imported {
-        let asset = AVURLAsset(url: src)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+    /// A picture this Mac can't decode (AV1 from YouTube, on a Mac without an AV1 decoder, for one) is converted to H.264 first when
+    /// ffmpeg is installed; `status` is told when that starts, since it takes a while.
+    static func importFile(_ original: URL, status: (@Sendable (String) -> Void)? = nil) async throws -> Imported {
+        var src = original
+        var converted: URL?
+        defer { if let c = converted { try? FileManager.default.removeItem(at: c) } }
+        var asset = AVURLAsset(url: src)
+        guard var track = try await asset.loadTracks(withMediaType: .video).first else {
             throw AudioStore.StoreError.unreadable("“\(src.lastPathComponent)” doesn't contain a picture.")
+        }
+        if try await !track.load(.isDecodable) {
+            status?("Converting “\(original.lastPathComponent)” so this Mac can play it…")
+            let out = try await Transcoder.toH264(original)
+            converted = out; src = out
+            asset = AVURLAsset(url: src)
+            guard let t = try await asset.loadTracks(withMediaType: .video).first, try await t.load(.isDecodable) else {
+                throw AudioStore.StoreError.unreadable("“\(original.lastPathComponent)” still can't be played after converting it.")
+            }
+            track = t
         }
         let seconds = try await asset.load(.duration).seconds
         guard seconds.isFinite, seconds > 0 else { throw AudioStore.StoreError.unreadable("Couldn't read the length of “\(src.lastPathComponent)”.") }
@@ -52,6 +67,38 @@ enum VideoStore {
             audio = try AudioStore.importFile(tmp)
         }
         return Imported(video: name, audio: audio, size: CGSize(width: abs(size.width), height: abs(size.height)))
+    }
+}
+
+/// Converts a picture this Mac can't decode to H.264 with ffmpeg (a Homebrew or system install), when there is one.
+enum Transcoder {
+    static var ffmpeg: URL? {
+        let fixed = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]
+        let onPath = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/ffmpeg" }
+        return (fixed + onPath).first { FileManager.default.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }
+
+    static func toH264(_ src: URL) async throws -> URL {
+        guard let tool = ffmpeg else {
+            throw AudioStore.StoreError.unreadable("“\(src.lastPathComponent)” uses a video format this Mac can't play (such as AV1). Install ffmpeg (brew install ffmpeg) and import it again, and MacBand will convert it, or convert it to H.264 yourself.")
+        }
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        let p = Process()
+        p.executableURL = tool
+        p.arguments = ["-y", "-v", "error", "-i", src.path, "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                       "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out.path]
+        let err = Pipe()
+        p.standardError = err; p.standardOutput = FileHandle.nullDevice
+        let code: Int32 = try await withCheckedThrowingContinuation { c in
+            p.terminationHandler = { c.resume(returning: $0.terminationStatus) }
+            do { try p.run() } catch { c.resume(throwing: error) }
+        }
+        guard code == 0 else {
+            try? FileManager.default.removeItem(at: out)
+            let msg = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.split(separator: "\n").last.map(String.init) ?? "ffmpeg failed"
+            throw AudioStore.StoreError.unreadable("Couldn't convert “\(src.lastPathComponent)”: \(msg)")
+        }
+        return out
     }
 }
 
@@ -215,6 +262,13 @@ final class VideoView: NSView {
         }
         lastCue = cue
         let p = player(for: file)
+        if p.currentItem?.status == .failed {
+            lastCue = nil
+            layerHost.isHidden = true
+            message.isHidden = false
+            message.stringValue = "This Mac can't play this video's format (AV1, for one). Import it again to have it converted."
+            return
+        }
         if shown != file {
             for (f, other) in players where f != file && other.rate != 0 { other.pause() }
             layerHost.player = p
@@ -315,7 +369,9 @@ extension Session {
         busyMessage = "Importing “\(url.lastPathComponent)”…"
         Task {
             let result: Result<VideoStore.Imported, Error>
-            do { result = .success(try await VideoStore.importFile(url)) } catch { result = .failure(error) }
+            do {
+                result = .success(try await VideoStore.importFile(url) { msg in Task { @MainActor in self.busyMessage = msg } })
+            } catch { result = .failure(error) }
             self.busyMessage = nil
             switch result {
             case .failure(let e): self.errorMessage = e.localizedDescription
