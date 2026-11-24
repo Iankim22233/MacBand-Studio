@@ -291,7 +291,23 @@ import Foundation
             // a slide can't start before the note it glides
             drag(roll, from: CGPoint(x: rx(now(1).start) + 2, y: ry(64)), to: CGPoint(x: rx(at - 2), y: ry(64)))
             check(now(1).start >= now(0).start - 1e-6, "a slide can't be dragged to start before its long note (starts at \(now(1).start), note at \(now(0).start))")
-            s.undo(); s.undo(); s.undo(); s.undo()
+            s.undo(); s.undo(); s.undo()                                 // the three drags: back to the linked trio
+            // a slide is a ribbon from the pitch it leaves to the pitch it reaches: dragging the ribbon sideways changes the speed, never the pitches
+            do {
+                let a = now(1), b = now(2), p0 = now(0).pitch
+                let mid = CGPoint(x: rx(a.start + a.length / 2), y: (ry(p0) + ry(a.pitch)) / 2)
+                s.selectedNoteIDs = []
+                click(roll, mid)
+                check(s.selectedNoteIDs == [a.id], "clicking the middle of a slide's ribbon picks that slide")
+                drag(roll, from: mid, to: CGPoint(x: mid.x + 50, y: mid.y + 40))          // half a beat to the right, and well off the line vertically
+                check(abs(now(1).length - (a.length + 0.5)) < 0.1 && abs(now(1).start - a.start) < 1e-6, "dragging the ribbon sideways stretches the glide (\(a.length) → \(now(1).length) beats, same start)")
+                check(now(0).pitch == p0 && now(1).pitch == a.pitch && now(2).pitch == b.pitch, "…and every note keeps its pitch")
+                check(abs(now(2).start - now(1).end) < 1e-6 && abs(now(2).end - b.end) < 1e-6, "…the next glide takes up the slack")
+                drag(roll, from: CGPoint(x: rx(now(1).end), y: ry(a.pitch)), to: CGPoint(x: rx(a.end - 0.25), y: ry(a.pitch) + 30))     // the handle; moving off the line changes nothing
+                check(abs(now(1).end - (a.end - 0.25)) < 0.1 && now(1).pitch == a.pitch, "the handle at the end of the ribbon sets the speed the same way")
+                s.undo(); s.undo()
+            }
+            s.undo()                                                     // the link
             s.selectedNoteIDs = Set(trio.map { $0.id }); key(roll, "\u{7F}", code: 51)
         }
         // undo
