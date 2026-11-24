@@ -64,7 +64,7 @@ enum MIDIFile {
         for clip in track.clips {
             let normals = clip.notes.filter { !$0.isSlide }
             for n in clip.notes where n.isSlide {
-                guard let src = normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 }) else { continue }
+                guard let src = Note.source(of: n, normals: normals) else { continue }
                 need = max(need, abs(n.pitch - src.pitch))
             }
         }
@@ -103,7 +103,7 @@ enum MIDIFile {
 
             // Slide notes attach to the normal note sounding when they begin.
             func source(of n: Note) -> Note? {
-                normals.last(where: { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 })
+                Note.source(of: n, normals: normals)
             }
             var consumedSlides = Set<UUID>()
             for n in notes where n.isSlide && source(of: n) != nil { consumedSlides.insert(n.id) }

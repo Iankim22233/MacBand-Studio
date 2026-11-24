@@ -288,6 +288,42 @@ struct ClipInspector: View {
                 Button("Duplicate") { session.duplicateClip(trackID: track.id, clipID: clip.id) }
                 Button("Delete", role: .destructive) { session.deleteClip(trackID: track.id, clipID: clip.id) }
             }.buttonStyle(VistaButtonStyle())
+            SlideTransitionPanel()
+        }
+    }
+}
+
+/// Slide transitions in the Inspector: pick a note in the piano roll, choose whether the glide comes before it (the closest notes by
+/// pitch slide into it) or after it (it slides on to the closest note), set how fast, and apply.
+struct SlideTransitionPanel: View {
+    @EnvironmentObject var session: Session
+    @AppStorage("slideTransitionAfter") private var after = false
+    @AppStorage("slideTransitionSpeed") private var speed = 0.5                 // 0 slow … 1 fast
+    /// How long the glide lasts, in beats: a whole beat at the slow end, a 32nd of a beat at the fast end.
+    static func beats(forSpeed s: Double) -> Double { pow(2, -5 * min(1, max(0, s))) }
+    private var beats: Double { Self.beats(forSpeed: speed) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Slide transition")
+            HStack(spacing: 4) {
+                ForEach([(false, "Before note"), (true, "After note")], id: \.0) { item in
+                    Button { after = item.0 } label: {
+                        Text(item.1).font(Theme.vista(11)).foregroundStyle(.white.opacity(after == item.0 ? 1 : 0.7))
+                            .frame(maxWidth: .infinity).frame(height: 24).background(VistaFace(state: after == item.0))
+                    }.buttonStyle(.plain)
+                }
+            }
+            Text(after ? "The selected note slides on to the nearest note after it, by pitch."
+                       : "The nearest notes before it, by pitch, slide into the selected note. If two are equally near, both slide.")
+                .font(.system(size: 10)).foregroundStyle(Theme.faint).fixedSize(horizontal: false, vertical: true)
+            LabeledSlider(label: "Speed", value: $speed, range: 0...1,
+                          display: speed > 0.85 ? "Fast" : (speed < 0.15 ? "Slow" : String(format: "%.2f beat", beats)))
+            HStack {
+                Spacer()
+                Button(session.selectedNoteIDs.isEmpty ? "Select a note" : "Apply to Selected Note") { session.transitionAction(after: after, beats: beats) }
+                    .buttonStyle(VistaButtonStyle()).disabled(session.selectedNoteIDs.isEmpty)
+            }
         }
     }
 }

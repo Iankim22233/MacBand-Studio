@@ -138,6 +138,57 @@ enum MIDITools {
         }
     }
 
+    /// Transitions between notes, picked by pitch: of the notes within `window` beats, the ones whose pitch is closest to a chosen
+    /// note's (a note of the very same pitch has nothing to glide, so it is passed over; of several notes of one pitch the nearest
+    /// in time is used). Each glide is a slide note over the tail of the note that does the gliding, `glide` beats long, reaching
+    /// the other note's pitch just as that note ends or the next begins. The slide is tied to the note it glides, so it still
+    /// glides that one when other notes sound at the same time.
+    ///
+    /// `after == false` ("Slide to Note"): the closest notes before the chosen one slide into it; when two are equally close (one
+    /// above and one below, say) both slide to it. `after == true` ("Slide After Note"): the chosen note slides on to the closest note
+    /// after it; when two are equally close the earlier one is used (one note can only glide one way at a time).
+    /// A note that already has a slide is left as it is. Returns how many slides were added.
+    @discardableResult
+    static func transition(_ notes: inout [Note], ids: Set<UUID>, after: Bool, glide: Double, window: Double = 4) -> Int {
+        let chosen = notes.filter { ids.contains($0.id) && !$0.isSlide }.sorted { $0.start < $1.start }
+        var added: [Note] = []
+        func hasSlide(_ n: Note) -> Bool {
+            (notes + added).contains { $0.isSlide && $0.start >= n.start - 1e-6 && $0.start < n.end - 1e-6 && ($0.slideBase == nil || $0.slideBase == n.id) }
+        }
+        func slide(on base: Note, to pitch: Int, before limit: Double) {
+            let end = min(base.end, limit)
+            guard end > base.start + 1e-6, !hasSlide(base) else { return }
+            let g = max(1.0 / 32, min(glide, (end - base.start) / 2))
+            var s = Note(pitch: pitch, start: end - g, length: g, velocity: base.velocity, isSlide: true)
+            s.slideBase = base.id
+            added.append(s)
+        }
+        /// One note for each pitch: the nearest in time to the chosen note (`later` picks the earliest after it, else the latest before it).
+        func onePerPitch(_ ns: [Note], later: Bool) -> [Note] {
+            var best: [Int: Note] = [:]
+            for n in ns {
+                if let cur = best[n.pitch], later ? cur.start <= n.start : cur.start >= n.start { continue }
+                best[n.pitch] = n
+            }
+            return Array(best.values)
+        }
+        for t in chosen {
+            let others = notes.filter { !$0.isSlide && $0.id != t.id && $0.pitch != t.pitch }
+            if after {
+                let later = onePerPitch(others.filter { $0.start > t.start + 1e-6 && $0.start <= t.start + window }, later: true)
+                guard let d = later.map({ abs($0.pitch - t.pitch) }).min() else { continue }
+                let u = later.filter { abs($0.pitch - t.pitch) == d }.min { ($0.start, $0.pitch) < ($1.start, $1.pitch) }!
+                slide(on: t, to: u.pitch, before: u.start)
+            } else {
+                let earlier = onePerPitch(others.filter { $0.start < t.start - 1e-6 && $0.start >= t.start - window }, later: false)
+                guard let d = earlier.map({ abs($0.pitch - t.pitch) }).min() else { continue }
+                for src in earlier where abs(src.pitch - t.pitch) == d { slide(on: src, to: t.pitch, before: t.start) }
+            }
+        }
+        notes += added
+        return added.count
+    }
+
     /// Plays the selection backwards in time.
     static func reverse(_ notes: inout [Note], ids: Set<UUID>?) {
         let sel = notes.indices.filter { applies(notes[$0], ids) }
@@ -180,6 +231,20 @@ extension Session {
             }
             showToast(linked ? "Linked \(ids.count) notes into a slide" : "Unlinked the slide")
         }
+    }
+
+    /// The Slide transition panel in the Inspector: makes the glide into (`after == false`) or out of (`after == true`) each selected
+    /// note, `beats` long.
+    func transitionAction(after: Bool, beats: Double) {
+        guard let loc = selectedClipLocation, !selectedNoteIDs.isEmpty else { showToast("Select a note in the piano roll first"); return }
+        var notes = project.tracks[loc.track].clips[loc.clip].notes
+        let made = MIDITools.transition(&notes, ids: selectedNoteIDs, after: after, glide: beats)
+        guard made > 0 else {
+            showToast(after ? "No other note within 4 beats after it to slide to (or it already slides)" : "No other note within 4 beats before it to slide from (or it already slides)")
+            return
+        }
+        edit { $0.tracks[loc.track].clips[loc.clip].notes = notes }
+        showToast(after ? "The note slides on to the nearest note by pitch" : (made == 1 ? "The nearest note by pitch slides into it" : "\(made) equally near notes slide into it"))
     }
 
     func midiTool(_ body: (inout [Note], Set<UUID>?) -> Void) {
@@ -243,6 +308,49 @@ enum MIDIToolsTest {
         var c = [N(60, 0)]
         MIDITools.addChord(&c, ids: nil, intervals: [4, 7])
         check(c.map { $0.pitch }.sorted() == [60, 64, 67] && Set(c.map { $0.id }).count == 3, "add a major chord on a note")
+
+        // transitions picked by pitch
+        do {
+            func slides(_ n: [Note]) -> [Note] { n.filter { $0.isSlide }.sorted { $0.start < $1.start } }
+            let lo = N(60, 0, 1), hi = N(64, 1, 1), far = N(80, 2, 1), target = N(62, 3, 1)
+            var tie = [lo, hi, far, target]
+            let made = MIDITools.transition(&tie, ids: [target.id], after: false, glide: 0.25)
+            let sl = slides(tie)
+            check(made == 2 && sl.count == 2 && sl.allSatisfy { $0.pitch == 62 }, "slide to note: two notes equally near in pitch (60 and 64 → 62) both slide to it")
+            check(abs(sl[0].end - 1) < 1e-9 && abs(sl[1].end - 2) < 1e-9 && sl[0].start >= 0 && sl[1].start >= 1, "…each over the tail of its own note, arriving as that note ends")
+            var one = [N(60, 0, 1), N(67, 1, 1), N(62, 3, 1)]
+            let t1 = one[2].id
+            check(MIDITools.transition(&one, ids: [t1], after: false, glide: 0.25) == 1 && slides(one).first?.pitch == 62 && slides(one).first!.end <= 1 + 1e-9, "slide to note: only the nearest in pitch slides (60, not 67)")
+            var again = one
+            check(MIDITools.transition(&again, ids: [t1], after: false, glide: 0.25) == 0, "…and a note that already slides is left alone")
+            var nxt = [N(64, 0, 1), N(80, 1, 1), N(62, 2, 1), N(66, 3, 1)]
+            let src = nxt[0].id
+            check(MIDITools.transition(&nxt, ids: [src], after: true, glide: 0.25) == 1, "slide after note: the note gets one slide")
+            let got = slides(nxt)
+            check(got.first?.pitch == 62 && abs((got.first?.end ?? 0) - 1) < 1e-9, "…to the nearest in pitch after it (62 and 66 tie; the earlier one, 62, wins), over its tail")
+            // chords: the slide glides the note it was made for, not whichever note sounds at the time
+            var chord = [N(48, 0, 4), N(72, 0, 4), N(50, 4, 1)]
+            check(MIDITools.transition(&chord, ids: [chord[2].id], after: false, glide: 0.25) == 1, "slide to note under a chord: one slide (from the 48, the nearest to 50)")
+            let cs = chord.first { $0.isSlide }!
+            let normalsC = chord.filter { !$0.isSlide }.sorted { ($0.start, $0.pitch) < ($1.start, $1.pitch) }
+            check(Note.source(of: cs, normals: normalsC)?.pitch == 48, "…and it glides the 48, even though the 72 sounds then too")
+            var loose = cs; loose.slideBase = nil
+            check(Note.source(of: loose, normals: normalsC)?.pitch == 72, "(without that tie the slide would have picked the 72 and gone from the top)")
+            var ctr = Track(name: "t", colorIndex: 0); var ccl = Clip(name: "c", start: 0, length: 16); ccl.notes = chord; ctr.clips = [ccl]; ctr.bendRange = 12
+            let cev = MIDIFile.trackEvents(ctr, channel: 0, forExport: false).filter { $0.bytes.first == 0xE0 }
+            let cpeak = cev.map { (Double(Int($0.bytes[1]) | (Int($0.bytes[2]) << 7)) - 8192) / 8192 * 12 }.max() ?? 0
+            let clow = cev.map { (Double(Int($0.bytes[1]) | (Int($0.bytes[2]) << 7)) - 8192) / 8192 * 12 }.min() ?? 0
+            check(abs(cpeak - 2) < 0.05 && clow > -0.05, String(format: "played back, the glide goes up 2 semitones from the 48 to 50, not down from the 72 (%.2f / %.2f)", cpeak, clow))
+            var dup = [N(60, 0, 0.75), N(60, 1, 0.75), N(62, 1.75, 0.25)]
+            check(MIDITools.transition(&dup, ids: [dup[2].id], after: false, glide: 0.25) == 1, "two notes of the same pitch count as one: the nearer in time slides")
+            var distant = [N(60, 0, 1), N(62, 20, 1)]
+            check(MIDITools.transition(&distant, ids: [distant[1].id], after: false, glide: 0.25) == 0, "a note more than 4 beats away is out of reach")
+            check(abs(SlideTransitionPanel.beats(forSpeed: 0) - 1) < 1e-9 && abs(SlideTransitionPanel.beats(forSpeed: 1) - 1.0 / 32) < 1e-9, "the speed slider runs from a whole beat to a 32nd")
+            var same = [N(60, 0, 1), N(60, 1, 1)]
+            check(MIDITools.transition(&same, ids: [same[1].id], after: false, glide: 0.25) == 0, "a note of the same pitch has nothing to glide")
+            var lonely = [N(60, 0, 1)]
+            check(MIDITools.transition(&lonely, ids: [lonely[0].id], after: true, glide: 0.25) == 0, "nothing after it, nothing happens")
+        }
 
         var ar = [N(60, 0, 2), N(64, 0, 2), N(67, 0, 2)]
         MIDITools.arpeggiate(&ar, ids: nil, step: 0.5)

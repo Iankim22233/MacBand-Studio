@@ -45,7 +45,7 @@ extension Project {
                     }
                     if pass > 0 {
                         let normals = notes.filter { !$0.isSlide }
-                        notes.removeAll { n in n.isSlide && !normals.contains { $0.start <= n.start + 1e-6 && $0.end > n.start + 1e-6 } }
+                        notes.removeAll { n in n.isSlide && Note.source(of: n, normals: normals) == nil }
                     }
                     nc.notes = notes
                     out.append(nc)
