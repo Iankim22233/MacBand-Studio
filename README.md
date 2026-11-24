@@ -121,6 +121,7 @@ The video's own sound is the clip's audio (a video without sound gets a silent c
 clip, and the arrangement shows a strip of its frames with the waveform over it. The picture shows in the **Video window**
 (**View ▸ Video Window**, ⌥⌘M, which opens by itself on import): it plays with the song, jumps when you move the playhead,
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
+A video this Mac can't decode (AV1 from YouTube, on a Mac without an AV1 decoder, for example) is converted to H.264 when you import it, if ffmpeg is installed (`brew install ffmpeg`); without ffmpeg you get a message saying so, instead of a black picture.
 Not yet: exporting the picture together with the bounce.
 
 ## Levels: Trim, Auto Balance, Bass

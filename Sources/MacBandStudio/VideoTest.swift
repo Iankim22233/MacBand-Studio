@@ -189,6 +189,26 @@ enum VideoTest {
         check(sawBlue, "while playing the picture runs on to the blue part (it started at red, 0.6 s)")
         s.transport.isPlaying = false; view.step()
 
+        // an AV1 video (which a Mac without an AV1 decoder can't play) is converted to H.264 when it is imported
+        if let ff = Transcoder.ffmpeg {
+            let av1 = tmp.appendingPathComponent("videotest-av1.mp4")
+            try? FileManager.default.removeItem(at: av1)
+            let mk = Process(); mk.executableURL = ff
+            mk.arguments = ["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=2:size=320x180:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                            "-c:v", "libsvtav1", "-c:a", "aac", "-shortest", av1.path]
+            mk.standardOutput = FileHandle.nullDevice
+            if (try? mk.run()) != nil { mk.waitUntilExit() }
+            if mk.terminationStatus == 0 {
+                let r = wait({ try await VideoStore.importFile(av1) })
+                if case .success(let imp) = r {
+                    let a = AVURLAsset(url: AudioStore.url(imp.video))
+                    let decodable = wait({ try await a.loadTracks(withMediaType: .video).first?.load(.isDecodable) ?? false }).value ?? false
+                    check(decodable, "an AV1 video comes in as a picture this Mac can play (\(AudioStore.url(imp.video).pathExtension))")
+                    check(abs(imp.audio.duration - 2) < 0.2 && (imp.audio.peaks.max() ?? 0) > 10, "…with its sound (\(imp.audio.duration) s, loudest peak \(imp.audio.peaks.max() ?? 0))")
+                } else { check(false, "importing an AV1 video: \(r)") }
+            } else { print("SKIP AV1 import test (this ffmpeg can't make AV1)") }
+        } else { print("SKIP AV1 import test (no ffmpeg)") }
+
         print(failures == 0 ? "ALL VIDEO CHECKS PASSED" : "\(failures) VIDEO CHECK(S) FAILED")
         return failures == 0 ? 0 : 1
     }
