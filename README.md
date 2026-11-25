@@ -121,6 +121,7 @@ The video's own sound is the clip's audio (a video without sound gets a silent c
 clip, and the arrangement shows a strip of its frames with the waveform over it. The picture shows in the **Video window**
 (**View ▸ Video Window**, ⌥⌘M, which opens by itself on import): it plays with the song, jumps when you move the playhead,
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
+**Trim a video by dragging its ends** in the arrangement: drag the right end to cut off the end, the left end to skip the beginning (the other end stays where it is; neither can go past the video's own length). The picture, the sound and the frame strip follow. The same works for audio clips; ⌥ or ⌘ drags without snapping.
 Not yet: exporting the picture together with the bounce.
 
 ## Levels: Trim, Auto Balance, Bass

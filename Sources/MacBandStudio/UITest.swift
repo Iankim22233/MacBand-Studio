@@ -386,6 +386,34 @@ import Foundation
         let cc = s.project.tracks[0].clips.first { $0.id == c0.id }!
         drag(tl, from: CGPoint(x: CGFloat(cc.end) * a.ppb - 3, y: rowY + 20), to: CGPoint(x: (CGFloat(cc.end) + 4) * a.ppb - 3, y: rowY + 20))
         check((s.project.tracks[0].clips.first { $0.id == c0.id }?.length ?? 0) > cc.length + 3, "dragging the right edge resizes a pattern")
+        // trimming an audio or video clip by dragging its ends
+        do {
+            var at = Track(name: "Trim test", colorIndex: 0, kind: .audio)
+            let clip = AudioClip(name: "tt", start: 4, file: "x.caf", duration: 16, length: 8)           // 8 s of a 16 s file, from the start
+            at.audioClips = [clip]
+            s.modify { $0.tracks.append(at) }
+            let ti = s.project.tracks.count - 1
+            let ry = a.headerH + a.rowH * (CGFloat(ti) + 0.5) - a.scrollY
+            func now() -> AudioClip { s.project.tracks[ti].audioClips[0] }
+            let sec = { (b: Double) in s.project.seconds(atBeat: b) }
+            let endBeat = s.project.beat(atSeconds: sec(4) + 8)
+            // the right end: shorter, then longer than the file has
+            drag(tl, from: CGPoint(x: CGFloat(endBeat) * a.ppb - 3, y: ry), to: CGPoint(x: CGFloat(endBeat - 4) * a.ppb - 3, y: ry))
+            check(abs(now().length - (8 - (sec(endBeat) - sec(endBeat - 4)))) < 0.3 && now().start == 4 && now().offset == 0, "dragging the right end trims the clip's length (\(now().length) s)")
+            drag(tl, from: CGPoint(x: CGFloat(s.project.beat(atSeconds: sec(4) + now().length)) * a.ppb - 3, y: ry), to: CGPoint(x: 400 * a.ppb, y: ry))
+            check(abs(now().length - 16) < 0.01, "…and can't be pulled out past the end of the file (\(now().length) s of 16)")
+            // the left end: skips the start of the file, the end stays put
+            let before = now(), endSec = sec(4) + before.length
+            drag(tl, from: CGPoint(x: 4 * a.ppb + 3, y: ry), to: CGPoint(x: 6 * a.ppb + 3, y: ry))
+            let after = now()
+            check(after.start > 4.5 && after.offset > 0.5 && abs(sec(after.start) + after.length - endSec) < 0.02, "dragging the left end skips the start of the file and keeps the end where it is (starts at beat \(after.start), offset \(after.offset) s)")
+            drag(tl, from: CGPoint(x: CGFloat(after.start) * a.ppb + 3, y: ry), to: CGPoint(x: 0, y: ry))
+            check(now().offset < 0.01 && abs(sec(now().start) + now().length - endSec) < 0.02, "…and back out to the start of the file, no further")
+            check(s.project.tracks[ti].audioClips.count == 1 && now().file == "x.caf", "trimming never makes another clip")
+            s.undo(); s.undo(); s.undo(); s.undo()
+            s.undo()                                                                 // the track itself
+            check(s.project.tracks.count == ti, "(the trim test's track is removed again)")
+        }
         // track height: ⌘-scroll / slider make tracks taller, hit-testing follows
         let savedRowH = a.rowH                              // the height you chose is put back afterwards
         a.rowH = 100

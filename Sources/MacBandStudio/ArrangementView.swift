@@ -313,6 +313,7 @@ final class TimelineView: PlatformView {
         case clipMove(id: UUID, grabBeat: Double, origStart: Double, startRow: Int)
         case clipResize(id: UUID, origLen: Double)
         case audioMove(id: UUID, grabBeat: Double, origStart: Double)
+        case audioTrim(id: UUID, startEdge: Bool, origStart: Double, origOffset: Double, origLength: Double)      // drag an end of an audio or video clip
         case marquee
         case pan
     }
@@ -683,6 +684,11 @@ final class TimelineView: PlatformView {
                 ctx.fill(CGRect(x: bx0, y: ny, width: max(1.5, bx1 - bx0 - 0.5), height: 3))
             }
         }
+        if r.width > 24 {                                   // the ends can be dragged to trim the clip
+            ctx.setFillColor(NSColor.white.withAlphaComponent(selected ? 0.9 : 0.5).cgColor)
+            ctx.fill(CGRect(x: r.minX, y: r.minY + 18, width: 3, height: max(4, r.height - 22)))
+            ctx.fill(CGRect(x: r.maxX - 3, y: r.minY + 18, width: 3, height: max(4, r.height - 22)))
+        }
         if r.width > 24 {
             var a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold)]
             a[.foregroundColor] = NSColor(white: 0, alpha: muted ? 0.5 : 0.78)
@@ -702,6 +708,16 @@ final class TimelineView: PlatformView {
             let r = CGRect(x: x(c.start), y: rowTop(ti) + 5, width: max(4, CGFloat(audioWidthBeats(c)) * ppb), height: rowH - 10)
             if r.contains(pt) { return (ti, c) }
         }
+        return nil
+    }
+
+    /// An end of an audio or video clip, for trimming it by dragging: `startEdge` is the left end.
+    private func audioEdgeHit(_ pt: NSPoint) -> (ti: Int, clip: AudioClip, startEdge: Bool)? {
+        guard let h = audioClipHit(pt) else { return nil }
+        let r = CGRect(x: x(h.clip.start), y: rowTop(h.ti) + 5, width: max(4, CGFloat(audioWidthBeats(h.clip)) * ppb), height: rowH - 10)
+        let g = min(edgeGrab(r.width), r.width / 3)
+        if pt.x > r.maxX - g { return (h.ti, h.clip, false) }
+        if pt.x < r.minX + g { return (h.ti, h.clip, true) }
         return nil
     }
 
@@ -749,6 +765,7 @@ final class TimelineView: PlatformView {
         if pt.y < ArrangementState.loopH, loopEdgeHit(pt.x) != nil { NSCursor.resizeLeftRight.set(); return }
         if state.showTempo, pt.y >= ArrangementState.rulerH, pt.y < headerH { (tempoHit(pt) != nil ? NSCursor.pointingHand : NSCursor.crosshair).set(); return }
         if pt.y >= headerH, let h = clipHit(pt), h.edge { NSCursor.resizeLeftRight.set(); return }
+        if pt.y >= headerH, audioEdgeHit(pt) != nil { NSCursor.resizeLeftRight.set(); return }
         NSCursor.arrow.set()
     }
 
@@ -823,6 +840,10 @@ final class TimelineView: PlatformView {
             if session.selectedAudioClipID != ah.clip.id { session.selectedTuneNoteIDs = [] }
             session.selectedAudioClipID = ah.clip.id
             if event.clickCount == 2 { session.showEditor = true; session.bottomPanel = .tune; drag = .none; return }
+            if let e = audioEdgeHit(pt) {                              // an end of the clip: drag to trim it
+                drag = .audioTrim(id: ah.clip.id, startEdge: e.startEdge, origStart: ah.clip.start, origOffset: ah.clip.offset, origLength: ah.clip.length)
+                return
+            }
             drag = .audioMove(id: ah.clip.id, grabBeat: beat(pt.x), origStart: ah.clip.start)
             return
         }
@@ -902,6 +923,23 @@ final class TimelineView: PlatformView {
             var targetRow = min(max(0, row(at: pt.y)), project.tracks.count - 1)
             if project.tracks[targetRow].kind != .audio, let cur = session.findAudioClip(id) { targetRow = cur.track }
             session.moveAudioClip(id, toTrackIndex: targetRow, start: newStart)
+        case .audioTrim(let id, let startEdge, let origStart, let origOffset, let origLength):
+            if abs(pt.x - mouseDownPoint.x) > 3 || abs(pt.y - mouseDownPoint.y) > 3 { beginChange() } else { return }
+            guard let loc = session.findAudioClip(id) else { return }
+            let c = project.tracks[loc.track].audioClips[loc.clip]
+            let p = project
+            let b = max(0, noSnap ? beat(pt.x) : snap(beat(pt.x), 0.25))
+            let startSec = p.seconds(atBeat: origStart)
+            if startEdge {
+                // the start moves, the end stays where it is: more or less of the beginning of the file is skipped
+                let lowest = max(0, origOffset - startSec)                              // can't be pulled out past the file's start or the project's start
+                let newOffset = min(origOffset + origLength - 0.05, max(lowest, origOffset + (p.seconds(atBeat: b) - startSec)))
+                let delta = newOffset - origOffset
+                session.trimAudioClip(id, start: p.beat(atSeconds: startSec + delta), offset: newOffset, length: origLength - delta)
+            } else {
+                let len = min(c.duration - origOffset, max(0.05, p.seconds(atBeat: b) - startSec))
+                session.trimAudioClip(id, start: origStart, offset: origOffset, length: len)
+            }
         case .clipResize(let id, let origLen):
             beginChange()
             guard let loc = session.findClip(id) else { return }

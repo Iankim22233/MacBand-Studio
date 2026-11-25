@@ -75,6 +75,17 @@ extension Session {
         selectedTrackID = project.tracks[tj].id
     }
 
+    /// Trims an audio or video clip: where it starts on the timeline, how much of the start of the file is skipped, and how long it plays.
+    func trimAudioClip(_ id: UUID, start: Double, offset: Double, length: Double) {
+        guard let loc = findAudioClip(id) else { return }
+        modify { p in
+            let c = p.tracks[loc.track].audioClips[loc.clip]
+            p.tracks[loc.track].audioClips[loc.clip].start = max(0, start)
+            p.tracks[loc.track].audioClips[loc.clip].offset = max(0, min(offset, c.duration - 0.05))
+            p.tracks[loc.track].audioClips[loc.clip].length = max(0.05, min(length, c.duration - max(0, offset)))
+        }
+    }
+
     // MARK: Keeping audio with saved projects
 
     /// Audio lives in MacBand's own folder; saving a project also copies its audio next to the file so the pair can be moved or shared.
