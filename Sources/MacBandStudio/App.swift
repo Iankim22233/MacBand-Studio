@@ -62,7 +62,7 @@ struct MacBandApp: App {
                 Button("Show Introduction") { session.startIntro() }
                 Button("Show the MacBand Folder") { NSWorkspace.shared.open(ProjectsFolder.ensure().url) }
             }
-            CommandMenu("View") {
+            CommandGroup(after: .toolbar) {           // inside the system View menu (a second menu named View sat next to it)
                 Button("Visualizer Window") { VisualizerWindow.shared.show(session) }.keyboardShortcut("v", modifiers: [.command, .option])
                 Button("3D Stage Window") { JamWindow.shared.show(session) }.keyboardShortcut("j", modifiers: [.command, .option])
                 Button("Video Window") { VideoWindow.shared.show(session) }.keyboardShortcut("m", modifiers: [.command, .option])
