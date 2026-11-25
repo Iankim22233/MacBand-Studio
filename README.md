@@ -123,6 +123,14 @@ clip, and the arrangement shows a strip of its frames with the waveform over it.
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
 Not yet: exporting the picture together with the bounce.
 
+## Loop count
+
+Drag in the strip above the ruler to set a loop and press **Loop** (L) to play it. By default it loops for ever. **Right-click the loop strip** to
+choose how many times it plays before the song goes on past it: **Loop for Ever**, **2, 4 or 8 Times, Then Play On**, or **Loop a Set Number of
+Times…** to type your own number (0 or empty = for ever). A loop with a set number shows **×N** on the strip. The count is saved with the
+project; the first time through counts as one, so 3 plays the loop three times and then continues with the rest of the song (MIDI, audio clips
+and tempo changes all follow).
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track

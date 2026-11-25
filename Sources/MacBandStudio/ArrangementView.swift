@@ -514,6 +514,12 @@ final class TimelineView: PlatformView {
             let r = CGRect(x: x(p.loopStart), y: 2, width: x(p.loopEnd) - x(p.loopStart), height: ArrangementState.loopH - 4)
             ctx.setFillColor(Theme.accentNS.withAlphaComponent(p.loopEnabled ? 0.9 : 0.28).cgColor)
             ctx.addPath(CGPath(roundedRect: r, cornerWidth: 0, cornerHeight: 0, transform: nil)); ctx.fillPath()
+            if p.loopCount > 0, r.width > 30 {                       // plays a set number of times: say how many
+                let label = "×\(p.loopCount)" as NSString
+                let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 9, weight: .bold), .foregroundColor: NSColor.white.withAlphaComponent(p.loopEnabled ? 1 : 0.7)]
+                let sz = label.size(withAttributes: attrs)
+                label.draw(at: CGPoint(x: min(r.maxX, bounds.width) - sz.width - 4, y: r.minY + (r.height - sz.height) / 2), withAttributes: attrs)
+            }
         }
 
         // bars
@@ -929,7 +935,16 @@ final class TimelineView: PlatformView {
     func contextActions(at pt: CGPoint) -> [ContextAction] {
         var actions: [ContextAction] = []
         func item(_ title: String, _ action: @escaping () -> Void) { actions.append(ContextAction(title: title, destructive: title.hasPrefix("Delete") || title.hasPrefix("Clear"), run: action)) }
-        if state.showTempo, pt.y >= ArrangementState.rulerH, pt.y < headerH {
+        if pt.y < ArrangementState.loopH {
+            // the loop strip: how many times the loop plays before the song moves on
+            guard project.loopEnd > project.loopStart, pt.x >= x(project.loopStart) - loopGrab, pt.x <= x(project.loopEnd) + loopGrab else { return [] }
+            let n = project.loopCount
+            item((n == 0 ? "✓ " : "") + "Loop for Ever") { self.session.setLoopCount(0) }
+            for k in [2, 4, 8] { item((n == k ? "✓ " : "") + "Loop \(k) Times, Then Play On") { self.session.setLoopCount(k) } }
+            #if os(macOS)
+            item(n > 0 && ![2, 4, 8].contains(n) ? "✓ Loop \(n) Times…" : "Loop a Set Number of Times…") { self.session.askLoopCount() }
+            #endif
+        } else if state.showTempo, pt.y >= ArrangementState.rulerH, pt.y < headerH {
             frozenTempoRange = tempoRange()
             defer { frozenTempoRange = nil }
             if let hit = tempoHit(pt), let id = hit, let tp = project.tempoPoints.first(where: { $0.id == id }) {

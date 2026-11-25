@@ -228,6 +228,7 @@ struct Project: Codable {
     var loopEnabled = false
     var loopStart: Double = 0
     var loopEnd: Double = 0                 // empty until a loop range is set
+    var loopCount = 0                       // how many times the loop plays before the song moves on; 0 = for ever
     var keyRoot = 0                         // 0 = C
     var scale: ScaleKind = .chromatic
     var masterVolume: Double = 0.8
@@ -251,6 +252,7 @@ struct Project: Codable {
         loopEnabled = try c.decodeIfPresent(Bool.self, forKey: .loopEnabled) ?? false
         loopStart = try c.decodeIfPresent(Double.self, forKey: .loopStart) ?? 0
         loopEnd = try c.decodeIfPresent(Double.self, forKey: .loopEnd) ?? 0
+        loopCount = max(0, try c.decodeIfPresent(Int.self, forKey: .loopCount) ?? 0)
         keyRoot = try c.decodeIfPresent(Int.self, forKey: .keyRoot) ?? 0
         scale = try c.decodeIfPresent(ScaleKind.self, forKey: .scale) ?? .chromatic
         masterVolume = try c.decodeIfPresent(Double.self, forKey: .masterVolume) ?? 0.8

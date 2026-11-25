@@ -39,10 +39,12 @@ enum AudioSchedule {
         let L = max(0.05, le - ls)
         var raw = le - secStart
         var pass = 0
-        while out.count < maxItems && pass < 2000 && raw < 20 * 60 {
+        let repeats = p.loopCount > 0 ? p.loopCount - 1 : Int.max            // a set number of plays, then the song goes on
+        while out.count < maxItems && pass < min(2000, repeats) && raw < 20 * 60 {
             for c in track.audioClips { add(c, window: ls, le, raw: raw) }
             raw += L; pass += 1
         }
+        if p.loopCount > 0 { for c in track.audioClips { add(c, window: le, 1e9, raw: raw) } }
         return out
     }
 }
