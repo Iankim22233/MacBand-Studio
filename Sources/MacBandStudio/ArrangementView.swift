@@ -1047,7 +1047,7 @@ final class TimelineView: PlatformView {
             if project.loopEnd - project.loopStart >= 1, !project.loopEnabled { session.modify { $0.loopEnabled = true } }
         case .tagNew(let id, _):
             session.resortTags()
-            session.renamingTagID = id                                // a new tag asks for its name
+            session.askAboutNewTag(id)                                // a new tag asks whether to keep it, and its name
         case .tagMove, .tagEdge:
             session.resortTags()
         case .tempoPoint:

@@ -126,7 +126,7 @@ Not yet: exporting the picture together with the bounce.
 ## Tags
 
 A **tag lane** under the ruler lets you mark places in the song. **Click** the lane to mark a spot, or **drag** along it to mark an area; a new
-tag asks for its name. Click a tag to move the playhead there, drag it to move it, drag the edges of an area to stretch it, double-click to
+tag asks **Add this tag?** with a name to type: **Add Tag** keeps it, **Cancel** (or Esc) takes it away again. Click a tag to move the playhead there, drag it to move it, drag the edges of an area to stretch it, double-click to
 rename. Right-click a tag for Rename, Next Colour, Loop This Area and Delete (right-click the empty lane for Add Tag Here / Tag the Loop Area).
 **T** tags the playhead; the **Tags** menu has Add Tag at Playhead, Tag the Loop Area, Previous/Next Tag (⌥⌘[ and ⌥⌘]) and Clear All Tags.
 Each tag also draws a thin line through the tracks (and a faint wash over its area). Tags are saved with the project and written into exported

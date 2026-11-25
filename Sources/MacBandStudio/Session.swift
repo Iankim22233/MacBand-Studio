@@ -54,6 +54,7 @@ final class Session: ObservableObject {
     @Published var tuneWorking: Set<UUID> = []          // audio clips being analyzed or re-rendered
     @Published var selectedTagID: UUID?
     @Published var renamingTagID: UUID?             // set to ask for a tag's name
+    @Published var newTagPending = false            // …and the tag was only just placed: the question is whether to keep it
     var recorder: AudioRecorder?
     var recordStartBeat = 0.0
     var tuneRenderGeneration: [UUID: Int] = [:]

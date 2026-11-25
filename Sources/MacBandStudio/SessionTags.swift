@@ -10,8 +10,19 @@ extension Session {
         let tag = Tag(name: name ?? "Tag \(project.tags.count + 1)", start: max(0, start), length: max(0, length))
         edit { p in p.tags.append(tag); self.sortTags(&p) }
         selectedTagID = tag.id
-        if ask { renamingTagID = tag.id }
+        if ask { askAboutNewTag(tag.id) }
         return tag.id
+    }
+
+    /// A tag was just placed: asks whether to keep it (and what to call it).
+    func askAboutNewTag(_ id: UUID) { newTagPending = true; renamingTagID = id }
+
+    /// The answer to that question. Adding names the tag; cancelling takes it away again (the placing is undone).
+    func resolveNewTag(_ id: UUID, add: Bool, name: String) {
+        newTagPending = false
+        renamingTagID = nil
+        if add { renameTag(id, to: name) }
+        else if project.tags.contains(where: { $0.id == id }) { undo(); if selectedTagID == id { selectedTagID = nil } }
     }
 
     /// A tag over the loop area, if there is one.
