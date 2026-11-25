@@ -386,6 +386,22 @@ import Foundation
         let cc = s.project.tracks[0].clips.first { $0.id == c0.id }!
         drag(tl, from: CGPoint(x: CGFloat(cc.end) * a.ppb - 3, y: rowY + 20), to: CGPoint(x: (CGFloat(cc.end) + 4) * a.ppb - 3, y: rowY + 20))
         check((s.project.tracks[0].clips.first { $0.id == c0.id }?.length ?? 0) > cc.length + 3, "dragging the right edge resizes a pattern")
+        // the loop strip's right-click menu: how many times the loop plays before the song goes on
+        do {
+            let saved = (s.project.loopEnabled, s.project.loopStart, s.project.loopEnd, s.project.loopCount)
+            s.modify { $0.loopEnabled = true; $0.loopStart = 4; $0.loopEnd = 8; $0.loopCount = 0 }
+            let onStrip = CGPoint(x: 6 * a.ppb, y: 5), offStrip = CGPoint(x: 20 * a.ppb, y: 5)
+            let menu = tl.contextActions(at: onStrip)
+            check(menu.map { $0.title }.first?.contains("Loop for Ever") == true && menu.contains { $0.title.contains("4 Times") } && menu.contains { $0.title.contains("Set Number") },
+                  "right-click on the loop strip offers Loop for Ever, set counts and a number of your own (\(menu.map { $0.title }))")
+            check(tl.contextActions(at: offStrip).isEmpty, "…but not away from the loop")
+            menu.first { $0.title.contains("4 Times") }?.run()
+            check(s.project.loopCount == 4, "choosing 4 Times sets the loop count (\(s.project.loopCount))")
+            check(tl.contextActions(at: onStrip).contains { $0.title.hasPrefix("✓") && $0.title.contains("4 Times") }, "…and the menu ticks it")
+            s.undo()
+            check(s.project.loopCount == 0, "…and it undoes")
+            s.modify { $0.loopEnabled = saved.0; $0.loopStart = saved.1; $0.loopEnd = saved.2; $0.loopCount = saved.3 }
+        }
         // track height: ⌘-scroll / slider make tracks taller, hit-testing follows
         let savedRowH = a.rowH                              // the height you chose is put back afterwards
         a.rowH = 100

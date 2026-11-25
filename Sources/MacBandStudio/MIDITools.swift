@@ -244,6 +244,31 @@ enum MIDIToolsTest {
         MIDITools.addChord(&c, ids: nil, intervals: [4, 7])
         check(c.map { $0.pitch }.sorted() == [60, 64, 67] && Set(c.map { $0.id }).count == 3, "add a major chord on a note")
 
+        // a loop that plays a set number of times, then the song goes on
+        do {
+            var lp = Project(); lp.tempo = 120
+            var tr = Track(name: "t", colorIndex: 0); var cl = Clip(name: "c", start: 0, length: 8)
+            cl.notes = (0..<8).map { N(60, Double($0), 1) }
+            tr.clips = [cl]
+            tr.audioClips = [AudioClip(name: "a", start: 0, file: "x.caf", duration: 4, length: 4)]
+            lp.tracks = [tr]; lp.tempoPoints = [TempoPoint(beat: 6, bpm: 90)]
+            lp.loopEnabled = true; lp.loopStart = 2; lp.loopEnd = 4; lp.loopCount = 3
+            let u = lp.loopUnrolled()
+            let clips = u.tracks[0].clips.sorted { $0.start < $1.start }
+            check(clips.map { $0.start } == [0, 4, 6, 8] && clips.map { $0.length } == [4, 2, 2, 4], "loop ×3: the song to the loop end, two repeats, then the rest of it (\(clips.map { $0.start }))")
+            check(clips.reduce(0) { $0 + $1.notes.count } == 12, "…12 notes in all (4 + 2 + 2 + 4)")
+            check(u.tempoPoints.contains { $0.beat == 8 && $0.bpm == 120 } && u.tempoPoints.contains { $0.beat == 10 && $0.bpm == 90 }, "…the tempo change at beat 6 comes four beats later")
+            check(lp.loopWrapped(1) == 1 && lp.loopWrapped(5) == 3 && lp.loopWrapped(7.5) == 3.5 && lp.loopWrapped(9) == 5, "raw sequence beats map back onto the song (5 → 3, 9 → 5)")
+            check(lp.loopRaw(1) == 1 && lp.loopRaw(5) == 9, "…and the song's beats forward again (5 → 9)")
+            var forever = lp; forever.loopCount = 0
+            check(forever.loopWrapped(9) == 3 && forever.loopRaw(5) == 5, "for ever (0) keeps looping and leaves the song's beats alone")
+            var once = lp; once.loopCount = 1
+            let o = once.loopUnrolled().tracks[0].clips.sorted { $0.start < $1.start }
+            check(o.map { $0.start } == [0, 4] && o.reduce(0) { $0 + $1.notes.count } == 8, "loop ×1 is just the song")
+            let items = AudioSchedule.items(lp, track: lp.tracks[0], startBeat: 0, delay0: 0)
+            check(items.map { Int($0.delay.rounded()) } == [0, 2, 3, 4] && abs(Double(items.last?.frames ?? 0) / 44100 - 2) < 0.01, "audio: the loop's sound plays three times, then the rest (starting at 0, 2, 3 and 4 s)")
+        }
+
         var ar = [N(60, 0, 2), N(64, 0, 2), N(67, 0, 2)]
         MIDITools.arpeggiate(&ar, ids: nil, step: 0.5)
         check(ar.sorted { $0.pitch < $1.pitch }.map { $0.start } == [0, 0.5, 1.0], "arpeggiate spreads a chord upward")

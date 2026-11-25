@@ -575,7 +575,7 @@ final class AudioEngine {
     /// Song position in beats (the sequence itself is offset by `MIDIFile.playbackLead`).
     var position: Double {
         get { loopSource.loopWrapped(max(0, sequencer.currentPositionInBeats - MIDIFile.playbackLead)) }
-        set { sequencer.currentPositionInBeats = max(0, newValue) + MIDIFile.playbackLead }
+        set { sequencer.currentPositionInBeats = max(0, loopSource.loopRaw(newValue)) + MIDIFile.playbackLead }
     }
     /// Project whose loop settings define how raw sequence time maps back onto the song.
     private var loopSource = Project()
@@ -656,7 +656,7 @@ final class AudioEngine {
         let clickIdx = project.tracks.count + offset
         if clickIdx < tracks.count { tracks[clickIdx].destinationAudioUnit = click }
         for t in tracks { t.isLoopingEnabled = false }
-        sequencer.currentPositionInBeats = songPos + MIDIFile.playbackLead
+        sequencer.currentPositionInBeats = project.loopRaw(songPos) + MIDIFile.playbackLead
         sequencer.prepareToPlay()
         if wasPlaying { try? sequencer.start(); startAudio(project, songBeat: songPos, delay0: 0) }
     }

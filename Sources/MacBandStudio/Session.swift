@@ -518,6 +518,14 @@ final class Session: ObservableObject {
         }
     }
 
+    /// How many times the loop plays before the song moves on (0 = for ever).
+    func setLoopCount(_ n: Int) {
+        let v = min(999, max(0, n))
+        guard v != project.loopCount else { return }
+        edit { $0.loopCount = v }
+        showToast(v == 0 ? "The loop plays for ever" : "The loop plays \(v) time\(v == 1 ? "" : "s"), then the song goes on")
+    }
+
     func setTempo(_ bpm: Double) {
         let v = min(300, max(20, bpm))
         edit { $0.tempo = v }

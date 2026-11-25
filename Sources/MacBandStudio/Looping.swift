@@ -17,7 +17,8 @@ extension Project {
     func loopUnrolled() -> Project {
         guard loopEnabled, loopEnd > loopStart else { return self }
         let L = loopEnd - loopStart
-        let K = loopPasses()
+        let finite = loopCount > 0                         // plays a set number of times, then the song goes on after the loop
+        let K = finite ? loopCount - 1 : loopPasses()
         var q = self
         q.loopEnabled = false
 
@@ -25,10 +26,11 @@ extension Project {
         for ti in tracks.indices {
             var out: [Clip] = []
             for c in tracks[ti].clips {
-                for pass in 0...K {
-                    let ws = pass == 0 ? 0 : loopStart
-                    let we = loopEnd
-                    let shift = Double(pass) * L
+                for pass in 0...(K + (finite ? 1 : 0)) {          // pass K + 1 of a finite loop is the rest of the song after it
+                    let isTail = finite && pass == K + 1
+                    let ws = pass == 0 ? 0 : (isTail ? loopEnd : loopStart)
+                    let we = isTail ? Double.infinity : loopEnd
+                    let shift = Double(min(pass, K)) * L
                     let s = max(c.start, ws), e = min(c.end, we)
                     if e <= s { continue }
                     var nc = Clip(name: c.name, start: s + shift, length: e - s)
@@ -58,10 +60,21 @@ extension Project {
         var pts: [TempoPoint] = tempoPoints.filter { $0.beat < loopEnd }
         let startBPM = bpm(at: loopStart)
         let inside = tempoPoints.filter { $0.beat > loopStart && $0.beat < loopEnd }
-        for pass in 1...K {
-            let shift = Double(pass) * L
-            pts.append(TempoPoint(beat: loopStart + shift, bpm: startBPM, ramp: false))
-            for p in inside { pts.append(TempoPoint(beat: p.beat + shift, bpm: p.bpm, ramp: p.ramp)) }
+        if K >= 1 {
+            for pass in 1...K {
+                let shift = Double(pass) * L
+                pts.append(TempoPoint(beat: loopStart + shift, bpm: startBPM, ramp: false))
+                for p in inside { pts.append(TempoPoint(beat: p.beat + shift, bpm: p.bpm, ramp: p.ramp)) }
+            }
+        }
+        if finite {                                              // the song after the loop, later by the repeats
+            let shift = Double(K) * L
+            if shift > 0 {
+                pts.append(TempoPoint(beat: loopEnd + shift, bpm: bpm(at: loopEnd), ramp: false))
+                for p in tempoPoints where p.beat > loopEnd { pts.append(TempoPoint(beat: p.beat + shift, bpm: p.bpm, ramp: p.ramp)) }
+            } else {
+                pts += tempoPoints.filter { $0.beat >= loopEnd }
+            }
         }
         q.tempoPoints = pts
         return q
@@ -70,6 +83,15 @@ extension Project {
     /// Map a raw sequence beat back onto the song while looping.
     func loopWrapped(_ raw: Double) -> Double {
         guard loopEnabled, loopEnd > loopStart, raw >= loopEnd else { return raw }
-        return loopStart + (raw - loopStart).truncatingRemainder(dividingBy: loopEnd - loopStart)
+        let L = loopEnd - loopStart
+        if loopCount > 0, raw >= loopEnd + Double(loopCount - 1) * L { return raw - Double(loopCount - 1) * L }      // past the last pass: the song goes on
+        return loopStart + (raw - loopStart).truncatingRemainder(dividingBy: L)
+    }
+
+    /// The other way round: where in the sequence a beat of the song is. After a loop that plays a set number of times, the song
+    /// goes on later in the sequence by the repeats; for ever-looping (or inside the loop) it is the same beat.
+    func loopRaw(_ song: Double) -> Double {
+        guard loopEnabled, loopCount > 1, loopEnd > loopStart, song >= loopEnd else { return song }
+        return song + Double(loopCount - 1) * (loopEnd - loopStart)
     }
 }

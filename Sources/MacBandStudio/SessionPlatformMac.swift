@@ -208,6 +208,24 @@ extension Session {
         return false
     }
 
+    /// Right-click on the loop strip ▸ Loop a Set Number of Times…
+    func askLoopCount() {
+        let a = NSAlert()
+        a.messageText = "How many times should the loop play?"
+        a.informativeText = "After the last time the song goes on past the loop. Leave it empty or enter 0 to loop for ever."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 90, height: 24))
+        field.placeholderString = "for ever"
+        field.stringValue = project.loopCount > 0 ? "\(project.loopCount)" : ""
+        a.accessoryView = field
+        a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = field
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        let text = field.stringValue.trimmingCharacters(in: .whitespaces)
+        if text.isEmpty { setLoopCount(0) }
+        else if let n = Int(text.replacingOccurrences(of: "×", with: "")), n >= 0 { setLoopCount(n) }
+        else { showToast("Enter a whole number of times") }
+    }
+
     /// A message that stays until dismissed, with a way to open the MacBand folder.
     func presentNotice(title: String, text: String, then done: @escaping () -> Void) {
         let alert = NSAlert()
