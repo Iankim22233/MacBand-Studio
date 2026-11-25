@@ -218,6 +218,17 @@ struct TempoPoint: Codable, Identifiable, Hashable {
     var ramp: Bool = false      // glide from the previous tempo to this one
 }
 
+/// A tag marks a spot (`length` 0) or an area of the song with a name, so it can be found again.
+struct Tag: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var start: Double               // beats
+    var length: Double = 0          // beats; 0 = a mark at one point
+    var colorIndex: Int = 5
+    var end: Double { start + length }
+    var isArea: Bool { length > 0 }
+}
+
 struct Project: Codable {
     var version = 1
     var name = "Untitled"
@@ -234,6 +245,7 @@ struct Project: Codable {
     var masterBass: Double = 0              // dB, low shelf on the whole mix (negative = less bass)
     var masterInserts: [PluginSpec] = []    // effects on the whole mix (the master track)
     var tracks: [Track] = []
+    var tags: [Tag] = []                    // marks placed on the timeline, sorted by start
 
     var beatsPerBar: Double { Double(timeSigNum) * 4.0 / Double(timeSigDen) }
 
@@ -257,6 +269,7 @@ struct Project: Codable {
         masterBass = try c.decodeIfPresent(Double.self, forKey: .masterBass) ?? 0
         masterInserts = try c.decodeIfPresent([PluginSpec].self, forKey: .masterInserts) ?? []
         tracks = try c.decodeIfPresent([Track].self, forKey: .tracks) ?? []
+        tags = try c.decodeIfPresent([Tag].self, forKey: .tags) ?? []
     }
 
     /// Beat where the last clip ends (at least 4 bars).

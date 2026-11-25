@@ -41,6 +41,12 @@ extension Session {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
             }
             #endif
+            if args.contains("--demo-tags") {                      // pictures of the tag lane
+                self.project.tags = [Tag(name: "Intro", start: 0, length: 4, colorIndex: 1), Tag(name: "Fix the bass here", start: 5, colorIndex: 7),
+                                     Tag(name: "Verse", start: 8, length: 8, colorIndex: 2), Tag(name: "Hook", start: 20, colorIndex: 5)]
+                self.selectedTagID = self.project.tags[2].id
+                try? await Task.sleep(nanoseconds: 600_000_000)
+            }
             if args.contains("--demo-play") {                      // capture while the music plays (track glow)
                 self.togglePlay()
                 try? await Task.sleep(nanoseconds: UInt64((Double(value("--demo-after") ?? "1.3") ?? 1.3) * 1e9))

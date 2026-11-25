@@ -63,6 +63,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--videomake"), i + 1 < CommandL
 }
 if CommandLine.arguments.contains("--videotest") { exit(MainActor.assumeIsolated { VideoTest.run() }) }
 if CommandLine.arguments.contains("--slideplugintest") { exit(MainActor.assumeIsolated { SlidePluginTest.run() }) }
+if CommandLine.arguments.contains("--tagtest") { exit(MainActor.assumeIsolated { TagTest.run() }) }
 if CommandLine.arguments.contains("--tunetest") {
     MainActor.assumeIsolated { TuneTest.run() }
     exit(0)

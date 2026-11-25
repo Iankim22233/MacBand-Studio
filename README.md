@@ -123,6 +123,15 @@ clip, and the arrangement shows a strip of its frames with the waveform over it.
 and shows nothing where no video clip is. The video files are kept with the project (next to it in the “… Audio” folder).
 Not yet: exporting the picture together with the bounce.
 
+## Tags
+
+A **tag lane** under the ruler lets you mark places in the song. **Click** the lane to mark a spot, or **drag** along it to mark an area; a new
+tag asks **Add this tag?** with a name to type: **Add Tag** keeps it, **Cancel** (or Esc) takes it away again. Click a tag to move the playhead there, drag it to move it, drag the edges of an area to stretch it, double-click to
+rename. Right-click a tag for Rename, Next Colour, Loop This Area and Delete (right-click the empty lane for Add Tag Here / Tag the Loop Area).
+**T** tags the playhead; the **Tags** menu has Add Tag at Playhead, Tag the Loop Area, Previous/Next Tag (⌥⌘[ and ⌥⌘]) and Clear All Tags.
+Each tag also draws a thin line through the tracks (and a faint wash over its area). Tags are saved with the project and written into exported
+MIDI files as markers. `--tagtest` checks all of this.
+
 ## Levels: Trim, Auto Balance, Bass
 
 Every track has a **Trim** (dB) on top of its fader. **Auto Balance** (Mixer tab, or ⇧⌘L) measures how loud each track
@@ -163,7 +172,7 @@ when the engine switches to offline rendering. Both apps now reload the sounds b
 ## Developer flags (run `MacBandStudio --flag`)
 
 `--selftest` · `--uitest` · `--soundtest` (library, loading, rendering, audition) · `--soundtest-live` (decay envelopes) ·
-`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
+`--steptest` · `--scoretest` (notation engine) · `--scoreuitest` (mouse and keyboard editing) · `--toolstest` · `--tagtest` · `--videotest` · `--videomake out.mov` (a test movie) · `--balancetest` · `--visualtest` · `--visualshots <dir>` · `--jamtest` · `--jamshots <dir>` · `--autosavetest` · `--projecttest` · `--bandtest` (GarageBand import) · `--mastertest` (Master track effects) · `--introshots <dir>` · `--soundtest-after` · `--stresstest <plugin>` ·
 `--scoreshots <dir>` (renders test scores to PNG) · `--scoreexport <dir>` (PDF + MusicXML) ·
 `--demo-song [--demo-panel editor|steps|score|mixer|sounds] [--demo-track N] [--demo-video movie.mov [--demo-video-beat N]] [--demo-shot out.png]` ·
 `--eventlog` (mouse events to `~/Library/Logs/MacBand-events.log`).

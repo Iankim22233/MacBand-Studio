@@ -367,10 +367,10 @@ import Foundation
         print("timeline")
         let headerH = a.headerH
         // tempo lane: click adds a point
-        click(tl, CGPoint(x: 4 * a.ppb * 1 + 4 * 0 + (CGFloat(4) * a.ppb), y: ArrangementState.rulerH + 20))
+        click(tl, CGPoint(x: 4 * a.ppb * 1 + 4 * 0 + (CGFloat(4) * a.ppb), y: ArrangementState.tempoTop + 20))
         check(s.project.tempoPoints.count == 1, "clicking the tempo lane adds a tempo change (\(s.project.tempoPoints.count))")
         let tp0 = s.project.tempoPoints[0]
-        let ty = ArrangementState.rulerH + 20
+        let ty = ArrangementState.tempoTop + 20
         drag(tl, from: CGPoint(x: CGFloat(tp0.beat) * a.ppb, y: ty), to: CGPoint(x: CGFloat(tp0.beat) * a.ppb, y: ty - 18))
         check((s.project.tempoPoints.first?.bpm ?? 0) != tp0.bpm, "dragging a tempo point changes bpm (\(tp0.bpm) → \(s.project.tempoPoints.first?.bpm ?? 0))")
         let secs = s.project.seconds(atBeat: 16)

@@ -153,6 +153,7 @@ extension Session {
                     case "r": self.toggleRecord(); return nil
                     case "l": self.toggleLoop(); return nil
                     case "c": self.metronome.toggle(); return nil
+                    case "t": self.addTag(start: self.transport.beat); return nil          // T tags the playhead
                     case "t" where self.selectedAudioClipID != nil && self.bottomPanel == .tune: self.toggleTuneForSelection(); return nil
                     case "\r", "\u{3}": self.rewind(); return nil
                     default: break
