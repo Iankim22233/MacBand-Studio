@@ -15,6 +15,14 @@ extension Session {
         func value(_ f: String) -> String? { args.firstIndex(of: f).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if args.contains("--demo-menu") {                       // the menu bar, for checking where commands ended up
+                #if os(macOS)
+                for item in NSApp.mainMenu?.items ?? [] {
+                    print("MENU", item.title, "|", (item.submenu?.items ?? []).map { $0.isSeparatorItem ? "-" : $0.title }.joined(separator: " / "))
+                }
+                exit(0)
+                #endif
+            }
             self.project = DemoSong.make()
             self.engine.syncTracks(self.project.tracks, master: self.project.masterInserts)
             self.applyMix()
