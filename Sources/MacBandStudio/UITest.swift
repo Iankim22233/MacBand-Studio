@@ -182,7 +182,12 @@ import Foundation
         roll.frame = NSRect(x: 0, y: 0, width: 1000, height: 340)
         let lane = LaneView(session: s, state: rs)
         lane.frame = NSRect(x: 0, y: 340, width: 1000, height: 92)
+        UserDefaults.standard.removeObject(forKey: "showTempoLane")
         let a = ArrangementState()
+        check(!a.showTempo && a.headerH == ArrangementState.rulerH, "the tempo lane is hidden until the Tempo drop-down button opens it")
+        a.showTempo = true                                        // (the tests below use the lane)
+        check(a.headerH == ArrangementState.rulerH + ArrangementState.tempoH, "…opening it makes room for the lane")
+        check(ArrangementState().showTempo, "…and it stays open next time (remembered)")
         let tl = TimelineView(session: s, state: a)
         tl.frame = NSRect(x: 0, y: 440, width: 1000, height: 200)
         for v in [roll, lane, tl] { win.contentView!.addSubview(v) }
@@ -441,6 +446,7 @@ import Foundation
         levelGlow()
         orphanedViews(s)
         tuneCanvas(s)
+        UserDefaults.standard.removeObject(forKey: "showTempoLane")
         print(failures == 0 ? "ALL UI CHECKS PASSED" : "\(failures) UI CHECK(S) FAILED")
     }
     /// `--importtest file.mid|file.macband`: import into a fresh session, then render and report whether it makes sound.

@@ -10,7 +10,8 @@ final class ArrangementState: ObservableObject {
     @Published var scrollX: CGFloat = 0      // beats
     @Published var scrollY: CGFloat = 0      // points
     @Published var ppb: CGFloat = 26         // points per beat
-    @Published var showTempo = true
+    /// The tempo lane is out of the way until the Tempo drop-down button above the track list opens it; remembered between launches.
+    @Published var showTempo: Bool = UserDefaults.standard.bool(forKey: "showTempoLane") { didSet { UserDefaults.standard.set(showTempo, forKey: "showTempoLane") } }
 
     static let loopH: CGFloat = 14
     static let rulerH: CGFloat = 38
@@ -60,7 +61,16 @@ struct TrackHeaderColumn: View {
                 VistaSlider(value: Binding(get: { Double(state.rowH) }, set: { state.rowH = CGFloat($0) }), in: Double(ArrangementState.minRowH)...Double(ArrangementState.maxRowH))
                     .frame(width: compact ? 40 : 46)
                     .help("Track height (also ⌘-scroll over the tracks)")
-                IconButton(symbol: "waveform.path.ecg", active: state.showTempo, help: "Show tempo lane", size: 24) { state.showTempo.toggle() }
+                Button { state.showTempo.toggle() } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "waveform.path.ecg").font(.system(size: 11, weight: .semibold))
+                        Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold)).rotationEffect(.degrees(state.showTempo ? 180 : 0))
+                    }
+                    .foregroundStyle(.white).padding(.horizontal, 6).frame(height: 24)
+                    .background(VistaFace(state: state.showTempo))
+                }
+                .buttonStyle(.plain)
+                .help(state.showTempo ? "Hide the tempo lane" : "Show the tempo lane (tempo changes and glides)")
                 AddTrackMenu()
             }
             .padding(.horizontal, compact ? 6 : 10)
